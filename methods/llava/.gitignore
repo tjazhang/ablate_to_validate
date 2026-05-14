@@ -1,0 +1,69 @@
+# NEW: Aurora modification relative to upstream LLAVA.
+# NEW: Baseline https://github.com/haotian-liu/LLaVA.git @ v1.2.2.post1 (24fa1d065bbeac8a145a796ab7218c6945a2536e).
+# NEW: Upstream-tracked path: .gitignore
+
+# Python
+__pycache__
+*.pyc
+*.egg-info
+dist
+
+# Log
+*.log
+*.log.*
+*.json
+!data/encoder_config.json
+!scripts/zero3.json
+*.jsonl
+*.jpg
+!images/llava_v1_5_radar.jpg
+!llava/eval/webpage/figures/*.jpg
+
+# Data
+!**/alpaca-data-conversation.json
+
+# Editor
+.idea
+*.swp
+
+# Other
+.DS_Store
+wandb
+output
+
+checkpoints
+ckpts*
+
+.ipynb_checkpoints
+*.ipynb
+
+# DevContainer
+!.devcontainer/*
+
+# Demo
+serve_images/
+!llava/serve/examples/*.jpg
+
+llava/transformers
+
+*.npy
+
+Depth-Anything
+
+/logs
+
+*.tar
+
+batch_scripts
+
+data/ADE20K/mixed_depth/
+
+data/ADE20K/mixed_depth.tar.gz
+
+
+!data/evals/hardblink/answers/**/*.json
+
+!data/evals/hardblink/answers/**/*.jsonl
+!data/evals/hardblink/answers_qwen/**/*.jsonl
+!data/evals/hardblink/answers_qwen/**/*.json
+!data/evals/hardblink/answers_qwen/output/

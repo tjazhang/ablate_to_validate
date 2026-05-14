@@ -1,0 +1,18 @@
+# NEW: Aurora modification relative to upstream QWEN.
+# NEW: Baseline https://github.com/QwenLM/Qwen2.5-VL.git @ HEAD (96588727e44c78b25ba03ea03b8e12f7e64fd0da).
+# NEW: Upstream-tracked path: requirements_web_demo.txt
+
+# Core dependencies
+gradio==5.4.0
+gradio_client==1.4.2
+qwen-vl-utils==0.0.10
+transformers-stream-generator==0.0.4
+torch==2.4.0
+torchvision==0.19.0
+git+https://github.com/huggingface/transformers.git
+accelerate
+av
+
+# Optional dependency
+# Uncomment the following line if you need flash-attn
+# flash-attn==2.6.1

@@ -1,0 +1,7 @@
+{
+  "id": "mirage",
+  "repo_url": "https://github.com/UMass-Embodied-AGI/Mirage.git",
+  "commit": "53f26de2682025e146781c5b198ec93bdfe4c4d6",
+  "checkout_dir": "external/mirage/upstream"
+}
+

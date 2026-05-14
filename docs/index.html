@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ablate-to-Validate</title>
+  <meta
+    name="description"
+    content="Project page for Ablate-to-Validate: Testing Whether Vision-Language Models Actually Use Latent Visual Tokens"
+  />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Noto+Serif:wght@400;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #222222;
+      --muted: #6b7280;
+      --link: #2764c8;
+      --soft: #f5f7fb;
+      --line: #e5e7eb;
+      --accent: #2f5fb3;
+      --accent-soft: #eaf1ff;
+      --card: #ffffff;
+      --shadow: 0 12px 35px rgba(0, 0, 0, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Google Sans", Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 44px 24px 72px;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 20px 0 30px;
+    }
+
+    h1 {
+      font-family: "Noto Serif", Georgia, serif;
+      font-weight: 700;
+      font-size: clamp(2.1rem, 5vw, 4.1rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      margin: 0 0 12px;
+    }
+
+    .venue {
+      font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+      font-weight: 700;
+      margin: 6px 0 18px;
+    }
+
+    .authors,
+    .affiliations {
+      color: #2f3745;
+      font-size: 1.03rem;
+      margin: 8px auto;
+      max-width: 780px;
+    }
+
+    .affiliations {
+      color: var(--muted);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin: 26px 0 8px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: #2b2b2b;
+      color: white;
+      font-weight: 600;
+      border: 1px solid #2b2b2b;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .button:hover {
+      color: white;
+      text-decoration: none;
+      transform: translateY(-1px);
+    }
+
+    .button.secondary {
+      background: white;
+      color: #2b2b2b;
+      border-color: var(--line);
+    }
+
+    .button.secondary:hover {
+      color: #2b2b2b;
+    }
+
+    section {
+      margin-top: 46px;
+    }
+
+    h2 {
+      font-size: 1.65rem;
+      text-align: center;
+      margin: 0 0 22px;
+      letter-spacing: -0.02em;
+    }
+
+    .video-placeholder {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(47, 95, 179, 0.12), rgba(47, 95, 179, 0.02)),
+        repeating-linear-gradient(
+          45deg,
+          #f6f8fc,
+          #f6f8fc 12px,
+          #eef2f8 12px,
+          #eef2f8 24px
+        );
+      border: 1px dashed #aab7cf;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #4b5563;
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
+    .video-placeholder strong {
+      display: block;
+      color: #1f2937;
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+
+    .abstract {
+      font-family: "Noto Serif", Georgia, serif;
+      font-size: 1.05rem;
+      color: #2f3338;
+      max-width: 860px;
+      margin: 0 auto;
+      text-align: justify;
+    }
+
+    .teaser {
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .pipeline-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      min-height: 170px;
+    }
+
+    .pipeline-card h3 {
+      margin: 0 0 10px;
+      font-size: 1.02rem;
+      color: #111827;
+    }
+
+    .pipeline-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .token-row {
+      display: flex;
+      gap: 5px;
+      margin: 14px 0 0;
+      flex-wrap: wrap;
+    }
+
+    .token {
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: var(--accent-soft);
+      color: #1f4b93;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+
+    .token.bad {
+      background: #fff1f2;
+      color: #a22035;
+    }
+
+    .token.good {
+      background: #ecfdf5;
+      color: #047857;
+    }
+
+    .token.neutral {
+      background: #f3f4f6;
+      color: #4b5563;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 10px;
+    }
+
+    .result-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 20px;
+      background: white;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.055);
+    }
+
+    .result-card h3 {
+      margin: 0 0 8px;
+      font-size: 1.12rem;
+    }
+
+    .result-card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .metric {
+      display: inline-block;
+      margin: 14px 8px 0 0;
+      padding: 9px 11px;
+      border-radius: 12px;
+      background: var(--soft);
+      font-weight: 700;
+      color: #111827;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      overflow: hidden;
+      border-radius: 14px;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    pre {
+      background: #111827;
+      color: #f9fafb;
+      padding: 18px;
+      border-radius: 16px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 760px) {
+      .pipeline,
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        padding: 30px 18px 56px;
+      }
+
+      .abstract {
+        text-align: left;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>
+        Ablate-to-Validate:<br>
+        Are Vision-Language Models Really Using Continuous Thought Tokens?
+      </h1>
+
+      <div class="venue">ECCV 2026 Submission</div>
+
+      <div class="authors">
+        Tianyi Zhang &nbsp;&middot;&nbsp; <a href="https://mahtabbigverdi.github.io/">Mahtab Bigverdi</a> &nbsp;&middot;&nbsp; <a href="https://www.ranjaykrishna.com/">Ranjay Krishna</a>
+      </div>
+
+      <div class="affiliations">
+        University of Washington
+      </div>
+
+      <div class="button-row">
+        <a class="button" href="static/paper.pdf">Paper PDF</a>
+        <a class="button secondary" href="https://github.com/tjazhang/ablate_to_validate">Code</a>
+      </div>
+    </header>
+
+    <section aria-labelledby="video-title">
+      <h2 id="video-title">Video Explanation</h2>
+
+      <video
+        controls
+        autoplay
+        loop
+        muted
+        playsinline
+        poster="assets/AtV_figure.png"
+        style="width: 100%; border-radius: 18px; box-shadow: var(--shadow); display: block; background: #fafaf7;"
+      >
+        <source src="assets/atv_teaser.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+        <a href="assets/atv_teaser.mp4">Download the MP4</a>.
+      </video>
+    </section>
+
+    <section aria-labelledby="abstract-title">
+      <h2 id="abstract-title">Abstract</h2>
+
+      <p class="abstract">
+        Vision-language models are increasingly augmented with continuous or latent
+        non-textual tokens intended to support visual thinking. However, improved
+        task accuracy alone does not prove that models use these tokens for reasoning:
+        gains may arise from added context length, special-token anchoring, or
+        training-time regularization. We introduce <strong>Ablate-to-Validate</strong>,
+        a diagnostic principle for testing whether latent-token content is genuinely
+        utilized, and instantiate it as the <strong>Token Replacement Test</strong>
+        (TRT), a suite of content-replacement ablations. TRT holds the prompt,
+        image, token budget, and decoding procedure fixed while replacing
+        intermediate thought tokens with zero, random, first-repeat,
+        distribution-matched, or oracle alternatives. Across depth reasoning
+        testbeds and off-the-shelf visual-thinking mechanisms, TRT reveals a
+        recurring gap between having an auxiliary latent channel and using it as
+        an information-bearing bottleneck.
+      </p>
+    </section>
+
+    <section aria-labelledby="method-title">
+      <h2 id="method-title">Method Overview</h2>
+
+      <div class="teaser">
+        <figure style="margin: 0;">
+          <img
+            src="assets/AtV_figure.png"
+            alt="Ablate-to-Validate method overview figure"
+            style="width: 100%; border-radius: 12px; display: block;"
+          />
+        </figure>
+
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 22px 0 14px;
+          color: var(--muted);
+          font-size: 0.88rem;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        ">
+          <div style="flex: 1; height: 1px; background: var(--line);"></div>
+          Pipeline walkthrough
+          <div style="flex: 1; height: 1px; background: var(--line);"></div>
+        </div>
+
+        <div class="pipeline">
+          <article class="pipeline-card">
+            <h3>1. VLMs + Auxiliary Tokens</h3>
+            <p>
+              A vision-language model answers visual reasoning questions while
+              producing an intermediate auxiliary or continuous thought-token span.
+            </p>
+
+        
+          </article>
+
+          <article class="pipeline-card">
+            <h3>2. Token Replacement Test</h3>
+            <p>
+              Keep the prompt and image fixed, then replace only the thought-token
+              content to isolate what the model actually consumes.
+            </p>
+          </article>
+
+          <article class="pipeline-card">
+            <h3>3. Utilization Diagnosis</h3>
+            <p>
+              If content matters, corruption should hurt and oracle tokens should
+              help. If performance is stable, tokens may be acting as anchors or budget.
+            </p>
+
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="results-title">
+      <h2 id="results-title">Key Results</h2>
+
+      <div class="results-grid">
+        <article class="result-card">
+          <h3>Continuous spans are weakly content-sensitive</h3>
+          <p>
+            For continuous depth spans, random and first-repeat replacements produce
+            limited changes, while oracle depth tokens provide little or no headroom.
+          </p>
+
+          <span class="metric">LLaVA oracle: 74.46 → 74.73</span>
+          <span class="metric">Qwen oracle: 68.55 → 67.74</span>
+        </article>
+
+        <article class="result-card">
+          <h3>Discrete spans behave like bottlenecks</h3>
+          <p>
+            Discrete depth tokens show stronger causal dependence: oracle replacement
+            helps, while random and constant replacements degrade accuracy.
+          </p>
+
+          <span class="metric">Qwen oracle: 71.24 → 80.64</span>
+          <span class="metric">Qwen random: 71.24 → 51.34</span>
+        </article>
+      </div>
+
+      <table aria-label="Representative TRT results">
+        <thead>
+          <tr>
+            <th>Setting</th>
+            <th>Identity</th>
+            <th>Oracle</th>
+            <th>Random</th>
+            <th>First-repeat / Constant</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr>
+            <td>LLaVA continuous <span style="color:#6b7280;font-size:0.88em;">(SigLIP2, K=64)</span></td>
+            <td>74.46</td>
+            <td>74.73</td>
+            <td>72.58</td>
+            <td>74.46</td>
+          </tr>
+
+          <tr>
+            <td>Qwen continuous <span style="color:#6b7280;font-size:0.88em;">(DINOv2, K=4)</span></td>
+            <td>68.55</td>
+            <td>67.74</td>
+            <td>67.20</td>
+            <td>68.01</td>
+          </tr>
+
+          <tr>
+            <td>LLaVA discrete</td>
+            <td>77.69</td>
+            <td>78.76</td>
+            <td>68.82</td>
+            <td>73.66</td>
+          </tr>
+
+          <tr>
+            <td>Qwen discrete</td>
+            <td>71.24</td>
+            <td>80.64</td>
+            <td>51.34</td>
+            <td>58.87</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="beyond-title">
+      <h2 id="beyond-title">Beyond Depth &mdash; Off-the-Shelf VLMs</h2>
+
+      <p class="abstract">
+        TRT is not specific to our depth testbed. We also apply it to three
+        off-the-shelf "visual thinking" methods &mdash; Mirage, Mull-Tokens,
+        and CoVT &mdash; spanning multiple backbones and benchmarks. Across
+        all of them, the same content&ndash;utility gap recurs: token content
+        can be replaced or corrupted with little change in accuracy.
+        Representative numbers below; full breakdown in the paper.
+      </p>
+
+      <table aria-label="TRT applied to off-the-shelf methods">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Backbone</th>
+            <th>Benchmark</th>
+            <th>Identity</th>
+            <th>Random</th>
+            <th>Zero</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr>
+            <td>Mirage</td>
+            <td>Qwen2.5-VL-7B</td>
+            <td>HardBLINK depth</td>
+            <td>26.08</td>
+            <td>18.82</td>
+            <td>8.06</td>
+          </tr>
+
+          <tr>
+            <td>Mull-Tokens</td>
+            <td>Qwen2.5-VL-7B</td>
+            <td>BLINK</td>
+            <td>63.71</td>
+            <td>63.86</td>
+            <td>63.43</td>
+          </tr>
+
+          <tr>
+            <td>CoVT</td>
+            <td>LLaVA-13B</td>
+            <td>CV-Bench avg (2D + 3D)</td>
+            <td>78.55</td>
+            <td>20.20</td>
+            <td>63.99</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="takeaway-title">
+      <h2 id="takeaway-title">Takeaway</h2>
+
+      <p class="abstract">
+        <strong>Token Replacement Test (TRT) is a task-agnostic,
+        intervention-based diagnostic for latent-token reasoning in
+        vision-language models.</strong> By replacing the auxiliary span while
+        holding prompt, image, token budget, and decoding fixed, TRT exposes
+        whether a model truly uses the <em>content</em> of its visual tokens.
+        Across our depth testbed and three off-the-shelf methods (Mirage,
+        Mull-Tokens, CoVT), continuous visual tokens are often not causally
+        used at inference &mdash; accuracy gains alone are not evidence of
+        utilization, and TRT should accompany any claim about latent or
+        continuous "thought tokens."
+      </p>
+    </section>
+
+    <footer>
+      Website template inspired by the Aurora project page. Replace placeholders
+      with final author names, links, video, figures, code, and camera-ready metadata
+      before release.
+    </footer>
+  </main>
+</body>
+</html>

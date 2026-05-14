@@ -1,0 +1,16 @@
+{
+  "name": "atv-teaser-animation",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "record": "node record.mjs",
+    "encode:mp4": "ffmpeg -y -framerate 30 -i frames/%04d.png -c:v libx264 -pix_fmt yuv420p -movflags +faststart -preset slow -crf 18 atv_teaser.mp4",
+    "encode:gif": "ffmpeg -y -i frames/%04d.png -vf \"fps=20,scale=960:-1:flags=lanczos,palettegen=stats_mode=full\" palette.png && ffmpeg -y -framerate 30 -i frames/%04d.png -i palette.png -lavfi \"fps=20,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5\" atv_teaser.gif",
+    "build": "npm run record && npm run encode:mp4 && npm run encode:gif",
+    "clean": "rm -rf frames atv_teaser.mp4 atv_teaser.gif palette.png"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

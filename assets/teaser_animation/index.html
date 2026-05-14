@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ablate-to-Validate — Animated Teaser</title>
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --ink: #1F2330;
+    --ink-soft: #4A5063;
+    --rule: #E5E1D8;
+    --indigo: #3B3B98;
+    --orange: #E67E22;
+    --gold: #D4A017;
+    --red: #B83C2B;
+    --green: #178A6B;
+    --gray-deep: #6E6A60;
+    --teal: #2C8C8C;
+    --purple: #7C5295;
+    --paper: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #2a2a2a; }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  #stage {
+    width: 1280px; height: 720px;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ----- persistent header strip ----- */
+  #header {
+    position: absolute; top: 0; left: 0; right: 0; height: 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--rule);
+    background: rgba(255,255,255,0.6);
+    z-index: 50;
+  }
+  #header .title { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  #header .acronym {
+    font-size: 14px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 600;
+  }
+
+  /* ----- generic act container ----- */
+  .act {
+    position: absolute; top: 48px; left: 0; right: 0; bottom: 0;
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+
+  /* ===================== ACT 1 / 2 (shared scene) ===================== */
+  /* Single persistent subtitle — appears once and stays through the entire scene phase. */
+  .scene-title {
+    position: absolute; top: 20px; left: 40px; right: 40px;
+  }
+  .scene-title h2 {
+    margin: 0;
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.022em;
+    line-height: 1.1;
+  }
+  .scene-title h2 .accent { color: var(--orange); }
+
+  /* image panel — column 1 */
+  .image-panel {
+    position: absolute; top: 130px; left: 60px;
+    width: 460px; height: 300px;
+    background: linear-gradient(180deg, #cfe2f3 0%, #d9e8f1 45%, #e2d2b3 50%, #d6c4a2 100%);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .image-panel .lock-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(255,255,255,0.95); border-radius: 11px;
+    padding: 4px 10px; font-size: 13px; font-weight: 600;
+    color: var(--ink-soft); display: flex; align-items: center; gap: 6px;
+    border: 1px solid var(--rule);
+    opacity: 0;
+  }
+
+  /* speech bubble — column 2 */
+  .speech-bubble {
+    position: absolute; top: 150px; left: 560px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 14px 18px;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink);
+    width: 280px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    line-height: 1.25;
+  }
+  .speech-bubble::before {
+    content: ""; position: absolute; left: -10px; top: 22px;
+    width: 0; height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 10px solid var(--paper);
+  }
+  .arrow-down {
+    position: absolute; top: 248px; left: 696px;
+    width: 2px; height: 38px; background: var(--ink-soft);
+  }
+  .arrow-down::after {
+    content: ""; position: absolute; bottom: -1px; left: -4px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--ink-soft);
+  }
+  .vlm-box {
+    position: absolute; top: 296px; left: 560px;
+    width: 280px; height: 100px;
+    background: var(--indigo);
+    color: #fff;
+    border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 8px 22px rgba(59,59,152,0.28);
+  }
+  .vlm-box .label { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.75; }
+  .vlm-box .name { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; margin-top: 3px; }
+
+  /* right callout — column 3 */
+  .callout {
+    position: absolute; top: 170px; left: 890px;
+    width: 340px;
+    padding: 20px 22px;
+    background: rgba(230,126,34,0.06);
+    border: 1px solid rgba(230,126,34,0.30);
+    border-radius: 14px;
+    color: var(--ink);
+  }
+  .callout .eyebrow { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--orange); font-weight: 700; }
+  .callout h3 { margin: 8px 0 10px; font-size: 24px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.2; }
+  .callout p { margin: 0; font-size: 17px; color: var(--ink-soft); line-height: 1.4; }
+  .callout p.q { margin-top: 10px; font-size: 18px; color: var(--orange); font-weight: 700; }
+  /* Curved arrow from the callout to the Thought span (sits over the scene as an overlay). */
+  .callout-link {
+    position: absolute; top: 0; left: 0;
+    width: 1280px; height: 672px;
+    pointer-events: none;
+  }
+
+  /* token strip (centered, larger) */
+  .token-strip {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: 510px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 16px 22px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.04);
+  }
+  .token {
+    min-width: 34px; height: 42px;
+    border-radius: 8px;
+    background: #ECE6D9;
+    color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600;
+    padding: 0 10px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  .thought-wrap {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px;
+    border-radius: 12px;
+    background: rgba(230,126,34,0.10);
+    border: 1px dashed rgba(230,126,34,0.55);
+    position: relative;
+  }
+  .thought-token {
+    min-width: 44px; height: 42px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  /* Persistent 5-pill variant legend — all variants always visible, current one highlighted. */
+  .variant-legend {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: 462px;
+    display: flex; gap: 8px;
+    padding: 4px;
+  }
+  .variant-chip {
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.04);
+    color: var(--gray-deep);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: background 220ms ease, color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+  }
+  .variant-chip.active {
+    background: var(--orange);
+    color: #fff;
+    border-color: var(--orange);
+    box-shadow: 0 6px 16px rgba(230,126,34,0.30);
+    transform: translateY(-1px) scale(1.04);
+  }
+
+  /* One persistent scene-phase caption — appears once and stays. */
+  .scene-caption {
+    position: absolute; left: 0; right: 0;
+    top: 605px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.008em;
+    line-height: 1.3;
+  }
+  .scene-caption strong { color: var(--orange); font-weight: 700; }
+  .scene-caption .quiet { color: var(--ink-soft); font-weight: 500; }
+
+  /* ===================== ACT 3 (2x2 grid) ===================== */
+  #act3 .heading {
+    position: absolute; top: 22px; left: 40px; right: 40px;
+  }
+  #act3 .heading h2 {
+    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.015em;
+  }
+  #act3 .heading .sub {
+    margin-top: 5px; font-size: 15px; color: var(--ink-soft); line-height: 1.35;
+  }
+
+  .grid {
+    position: absolute; top: 100px; left: 40px;
+    width: 820px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 16px;
+  }
+  .cell {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 12px 14px 4px;
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  .cell .cell-title { font-size: 16px; font-weight: 700; letter-spacing: 0.01em; color: var(--ink); }
+  .cell .cell-sub { font-size: 14px; color: var(--ink-soft); margin-top: 3px; }
+  .cell svg { display: block; margin-top: 6px; }
+  .cell.highlight { box-shadow: 0 8px 24px rgba(184,60,43,0.22); border-color: rgba(184,60,43,0.45); }
+
+  /* Right-side row callouts — promoted from chip-style notes to full callout boxes. */
+  .row-annot {
+    position: absolute; left: 876px;
+    width: 372px;
+    padding: 16px 20px;
+    border-radius: 14px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    font-size: 20px; font-weight: 500; color: var(--ink);
+    opacity: 0;
+    line-height: 1.35;
+    letter-spacing: -0.005em;
+  }
+  /* Centered on each row's cells (cell height ~221px, grid starts at top:100). */
+  .row-annot.row-cont { top: 145px; }
+  .row-annot.row-disc { top: 380px; }
+  .row-annot .pill {
+    display: inline-block;
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 16px; font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+  }
+  .row-annot.row-cont .pill { background: rgba(184,60,43,0.10); color: var(--red); }
+  .row-annot.row-disc .pill { background: rgba(23,138,107,0.12); color: var(--green); }
+  .row-annot.row-cont strong { color: var(--red); font-weight: 700; }
+  .row-annot.row-disc strong { color: var(--green); font-weight: 700; }
+  .row-annot .arrow { color: var(--ink-soft); margin: 0 4px; }
+
+  #act3 .caveat-chip {
+    position: absolute; left: 40px; right: 40px; bottom: 14px;
+    background: rgba(247, 243, 233, 0.95);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 11px 18px;
+    font-size: 17px;
+    color: var(--ink-soft);
+    line-height: 1.4;
+  }
+
+  /* ===================== ACT 4 (TRANSPOSED table) ===================== */
+  #act4 .heading {
+    position: absolute; top: 22px; left: 40px; right: 40px;
+  }
+  #act4 .heading h2 {
+    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.015em;
+  }
+  #act4 .heading .sub {
+    margin-top: 6px; font-size: 15px; color: var(--ink-soft);
+    max-width: 1100px; line-height: 1.35;
+  }
+
+  /* methods are columns, replacements are rows */
+  #act4 table {
+    position: absolute; top: 132px; left: 50%; transform: translateX(-50%);
+    width: 920px;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+    font-size: 16px;
+  }
+  #act4 th, #act4 td {
+    padding: 12px 14px;
+    text-align: center;
+    border-bottom: 1px solid var(--rule);
+  }
+  #act4 th.row-label, #act4 td.row-label {
+    text-align: left;
+    width: 200px;
+    background: #F8F4E9;
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  #act4 thead th {
+    background: #F4EFE4;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  #act4 thead th.method-cell .task {
+    display: block;
+    font-size: 14px;
+    color: var(--ink-soft);
+    font-weight: 500;
+    margin-top: 4px;
+    letter-spacing: 0;
+  }
+  #act4 td.num {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  #act4 td.id-cell {
+    background: rgba(59,59,152,0.08);
+  }
+  #act4 td.hilite {
+    background: rgba(184,60,43,0.12);
+    color: var(--red);
+    font-weight: 700;
+  }
+  #act4 tbody tr { opacity: 0; transform: translateY(6px); }
+  #act4 .pattern-row td {
+    background: #FAF6EC;
+    font-size: 15px;
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-style: normal;
+  }
+
+  /* Sits ~24px under the table, not 100+px below it. */
+  #act4 .closing {
+    position: absolute; left: 40px; right: 40px;
+    top: 470px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+    opacity: 0;
+    line-height: 1.3;
+  }
+  #act4 .closing em { color: var(--red); font-style: normal; font-weight: 700; }
+
+  /* ===================== ACT 5 (end card) ===================== */
+  /* Big headline = the contribution (TRT). Small sub = the empirical finding (scoped). */
+  #act5 .end-line {
+    position: absolute; top: 220px; left: 0; right: 0;
+    text-align: center;
+    font-size: 42px; font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    padding: 0 60px;
+    line-height: 1.18;
+  }
+  #act5 .end-line em { color: var(--orange); font-style: normal; }
+  #act5 .end-sub {
+    position: absolute; top: 400px; left: 0; right: 0;
+    text-align: center;
+    font-size: 20px;
+    color: var(--ink-soft);
+    line-height: 1.4;
+    padding: 0 80px;
+  }
+  #act5 .end-sub em { color: var(--red); font-style: normal; font-weight: 600; }
+  #act5 .paper-mark {
+    position: absolute; bottom: 30px; right: 40px;
+    font-size: 15px;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  #act5 .paper-mark strong { color: var(--ink); font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="header">
+    <div class="title">Ablate-to-Validate</div>
+    <div class="acronym">Token Replacement Test · TRT</div>
+  </div>
+
+  <!-- ===================== ACT 1 / 2 (shared scene) ===================== -->
+  <div id="scene-act" class="act">
+    <div class="scene-title" id="scene-title">
+      <h2>Do VLMs really use their <span class="accent">thought tokens</span>?</h2>
+    </div>
+
+    <div class="image-panel" id="image-panel">
+      <svg viewBox="0 0 460 300" width="460" height="300">
+        <line x1="0" y1="150" x2="460" y2="150" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
+        <polygon points="205,150 255,150 390,300 70,300" fill="rgba(80,70,55,0.55)"/>
+        <line x1="230" y1="150" x2="230" y2="300" stroke="rgba(255,255,230,0.85)" stroke-width="2" stroke-dasharray="9 9"/>
+        <polygon points="0,150 80,100 140,135 210,90 270,128 340,95 410,134 460,112 460,150" fill="rgba(95,110,130,0.45)"/>
+        <g fill="rgba(60,100,75,0.65)">
+          <circle cx="120" cy="166" r="10"/>
+          <circle cx="340" cy="164" r="9"/>
+        </g>
+        <g fill="rgba(70,110,80,0.78)">
+          <circle cx="70" cy="215" r="16"/>
+          <circle cx="405" cy="235" r="20"/>
+        </g>
+        <g font-family="ui-monospace, Menlo, monospace" font-size="13" font-weight="700">
+          <circle cx="140" cy="255" r="13" fill="#E67E22" stroke="#fff" stroke-width="2"/>
+          <text x="140" y="260" text-anchor="middle" fill="#fff">A</text>
+          <circle cx="280" cy="220" r="12" fill="#3B3B98" stroke="#fff" stroke-width="2"/>
+          <text x="280" y="225" text-anchor="middle" fill="#fff">B</text>
+          <circle cx="188" cy="195" r="11" fill="#178A6B" stroke="#fff" stroke-width="2"/>
+          <text x="188" y="200" text-anchor="middle" fill="#fff">C</text>
+          <circle cx="345" cy="180" r="10" fill="#7C5295" stroke="#fff" stroke-width="2"/>
+          <text x="345" y="185" text-anchor="middle" fill="#fff">D</text>
+          <circle cx="240" cy="165" r="9" fill="#B83C2B" stroke="#fff" stroke-width="2"/>
+          <text x="240" y="170" text-anchor="middle" fill="#fff">E</text>
+        </g>
+      </svg>
+      <div class="lock-badge" id="lock-badge"><span>🔒</span><span>fixed</span></div>
+    </div>
+
+    <div class="speech-bubble" id="speech-bubble">
+      Which point is closer to the camera?
+    </div>
+    <div class="arrow-down" id="arrow-down"></div>
+    <div class="vlm-box" id="vlm-box">
+      <div class="label">Vision · Language Model</div>
+      <div class="name">VLM</div>
+    </div>
+
+    <div class="callout" id="callout">
+      <div class="eyebrow">Auxiliary span</div>
+      <h3>The <code>&lt;Thought&gt;</code> tokens</h3>
+      <p>Continuous "thought" vectors inserted into the model's response.</p>
+      <p class="q">Do models actually use them?</p>
+    </div>
+
+    <div class="variant-legend" id="variant-legend" style="opacity:0;">
+      <div class="variant-chip" data-variant="identity">Identity</div>
+      <div class="variant-chip" data-variant="zero">Zero</div>
+      <div class="variant-chip" data-variant="random">Random</div>
+      <div class="variant-chip" data-variant="first-repeat">1st-repeat</div>
+      <div class="variant-chip" data-variant="oracle">Oracle (GT)</div>
+    </div>
+
+    <div class="token-strip" id="token-strip">
+      <div class="token">…</div>
+      <div class="token">A</div>
+      <div class="token">?</div>
+      <div class="thought-wrap" id="thought-wrap">
+        <div class="thought-token" id="th0">v₁</div>
+        <div class="thought-token" id="th1">v₂</div>
+        <div class="thought-token" id="th2">v₃</div>
+      </div>
+      <div class="token">→</div>
+      <div class="token">A</div>
+      <div class="token">…</div>
+    </div>
+
+    <div class="scene-caption" id="scene-caption">
+      <strong>Token Replacement Test</strong> — swap only the <span style="color:var(--orange);font-weight:700;">&lt;Thought&gt;</span> tokens. <span class="quiet">Prompt + image stay fixed.</span>
+    </div>
+
+    <!-- Curved orange link from callout to the Thought span. Placed last in the scene DOM so its arrowhead draws ON TOP of the token-strip's white box. -->
+    <svg class="callout-link" id="callout-link" viewBox="0 0 1280 672">
+      <defs>
+        <marker id="thought-arrowhead" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
+          <path d="M 0 0 L 12 5 L 0 10 z" fill="#E67E22"/>
+        </marker>
+      </defs>
+      <!-- L-shape: long vertical drop, then a short horizontal that ends BEFORE the token-strip's right edge. -->
+      <path d="M 1000 353 L 1000 505 Q 1000 525 985 525 L 885 525"
+            stroke="#E67E22" stroke-width="2.5"
+            fill="none" stroke-dasharray="7 5"
+            stroke-linecap="round" stroke-linejoin="round"
+            marker-end="url(#thought-arrowhead)"/>
+    </svg>
+  </div>
+
+  <!-- ===================== ACT 3 ===================== -->
+  <div id="act3" class="act">
+    <div class="heading">
+      <h2>Does the model use the token <em style="color:var(--orange);font-style:normal;">content</em>? — Depth task, both backbones</h2>
+      <div class="sub">HardBLINK relative-depth, accuracy (%). Identity = self-predicted · Random = corrupted · Oracle = ground-truth.</div>
+    </div>
+
+    <div class="grid" id="grid">
+      <div class="cell" id="cell-cont-llava">
+        <div class="cell-title">Continuous · LLaVA-13B</div>
+        <div class="cell-sub">SigLIP2, K = 64</div>
+      </div>
+      <div class="cell" id="cell-cont-qwen">
+        <div class="cell-title">Continuous · Qwen2.5-VL-3B</div>
+        <div class="cell-sub">DINOv2, K = 4</div>
+      </div>
+      <div class="cell" id="cell-disc-llava">
+        <div class="cell-title">Discrete · LLaVA-13B</div>
+        <div class="cell-sub">codebook tokens, K = 100</div>
+      </div>
+      <div class="cell" id="cell-disc-qwen">
+        <div class="cell-title">Discrete · Qwen2.5-VL-3B</div>
+        <div class="cell-sub">codebook tokens, K = 100</div>
+      </div>
+    </div>
+
+    <div class="row-annot row-cont" id="annot-cont">
+      <span class="pill">weak utilization</span>
+      <div><strong>Continuous</strong> spans <span class="arrow">→</span> bars stay ≈ flat under replacement.</div>
+    </div>
+    <div class="row-annot row-disc" id="annot-disc">
+      <span class="pill">content-sensitive · this setup</span>
+      <div><strong>Discrete</strong> spans <span class="arrow">→</span> random hurts, oracle helps.</div>
+    </div>
+    <div class="caveat-chip" id="act3-caveat">
+      §A.2 — The discrete-depth setup is an interpretable diagnostic baseline; we do not claim discrete tokens are categorically better.
+    </div>
+  </div>
+
+  <!-- ===================== ACT 4 (transposed table) ===================== -->
+  <div id="act4" class="act">
+    <div class="heading">
+      <h2>TRT beyond the controlled depth pipeline</h2>
+      <div class="sub">
+        Task-agnostic, inference-time diagnostic — three off-the-shelf methods · two backbone families · six benchmarks · four training paradigms. <span style="color:var(--gray-deep);">(§A.2)</span>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="row-label">Replacement</th>
+          <th class="method-cell"><div>Mirage</div><span class="task">HardBLINK depth (Qwen2.5-VL-7B)</span></th>
+          <th class="method-cell"><div>Mull-Tokens</div><span class="task">BLINK (Qwen2.5-VL-Mull)</span></th>
+          <th class="method-cell"><div>CoVT</div><span class="task">CV-Bench avg 2D + 3D (LLaVA-13B)</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr id="row-id">
+          <td class="row-label">Identity</td>
+          <td class="num id-cell">26.08</td>
+          <td class="num id-cell">63.71</td>
+          <td class="num id-cell">78.55</td>
+        </tr>
+        <tr id="row-1st">
+          <td class="row-label">First-repeat</td>
+          <td class="num">26.61</td>
+          <td class="num">63.71</td>
+          <td class="num">78.55</td>
+        </tr>
+        <tr id="row-rand">
+          <td class="row-label">Random</td>
+          <td class="num">18.82</td>
+          <td class="num">63.86</td>
+          <td class="num hilite">20.20</td>
+        </tr>
+        <tr id="row-zero">
+          <td class="row-label">Zero</td>
+          <td class="num hilite">8.06</td>
+          <td class="num">63.43</td>
+          <td class="num">63.99</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="closing" id="act4-closing">
+      <em>Content</em> of visual tokens matters less than their <em>presence</em> in many settings.
+    </div>
+  </div>
+
+  <!-- ===================== ACT 5 (TRT as the headline; the finding is the sub) ===================== -->
+  <div id="act5" class="act">
+    <div class="end-line">
+      <em>Token Replacement Test</em> — a task-agnostic diagnostic for latent-token reasoning in VLMs.
+    </div>
+    <div class="end-sub">
+      In our experiments, continuous tokens are often <em>not causally used</em> at inference.
+    </div>
+    <div class="paper-mark">
+      <strong>Ablate-to-Validate</strong> · ECCV 2026 submission
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Deterministic timeline.
+// 46 s total (1380 frames @ 30 fps). Designed for academic viewers:
+//   - text appears once and stays (no within-act replacement),
+//   - every act ends with a multi-second hold so the dense content can be read,
+//   - the scene phase combines former Act 1 + Act 2 into one continuous panel.
+// ============================================================
+const TOTAL_MS = 46000;
+
+const ACTS = {
+  scene: { start: 0,     end: 16000 },   // Scene phase (combined Act 1 + Act 2)
+  act3:  { start: 16000, end: 30000 },   // depth bars, ~4.5 s hold at end
+  act4:  { start: 30000, end: 42000 },   // beyond-depth table, ~6.5 s hold
+  act5:  { start: 42000, end: 46000 },   // conclusion, 3 s hold
+};
+
+// Five TRT variants in Act 2 portion (6000–16000 ms = 10s, 5 × 2000ms)
+const VARIANTS = [
+  { name: "identity",     label: "IDENTITY · ORIGINAL",   contents: ["v₁","v₂","v₃"], colors: ["var(--orange)","var(--teal)","var(--purple)"], textColor: "#fff" },
+  { name: "zero",         label: "ZERO · NULL VALUES",    contents: ["0","0","0"],     colors: ["#D6D2C6","#D6D2C6","#D6D2C6"], textColor: "var(--ink-soft)" },
+  { name: "random",       label: "RANDOM · NOISE",        contents: ["~","~","~"],     colors: ["#9F7CB4","#D88A6A","#6CA890"], textColor: "#fff" },
+  { name: "first-repeat", label: "FIRST-REPEAT · A A A",  contents: ["A","A","A"],     colors: ["var(--orange)","var(--orange)","var(--orange)"], textColor: "#fff" },
+  { name: "oracle",       label: "ORACLE · GROUND TRUTH", contents: ["GT","GT","GT"],  colors: ["var(--gold)","var(--gold)","var(--gold)"], textColor: "#3a2b00" },
+];
+
+const ACT3_DATA = {
+  "cell-cont-llava":  { id: 74.46, rand: 72.58, orc: 74.73, max: 100 },
+  "cell-cont-qwen":   { id: 68.55, rand: 67.20, orc: 67.74, max: 100 },
+  "cell-disc-llava":  { id: 77.69, rand: 68.82, orc: 78.76, max: 100 },
+  "cell-disc-qwen":   { id: 71.24, rand: 51.34, orc: 80.64, max: 100 },
+};
+const CELL_ORDER = ["cell-cont-llava","cell-cont-qwen","cell-disc-llava","cell-disc-qwen"];
+
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function smoothstep(x){ x = clamp01(x); return x*x*(3-2*x); }
+function fadeWindow(t, start, fadeIn, holdEnd, fadeOut){
+  if (t < start) return 0;
+  if (t < start + fadeIn) return smoothstep((t - start) / fadeIn);
+  if (t < holdEnd) return 1;
+  if (t < holdEnd + fadeOut) return 1 - smoothstep((t - holdEnd) / fadeOut);
+  return 0;
+}
+
+function buildBars() {
+  for (const id of CELL_ORDER) {
+    const cell = document.getElementById(id);
+    if (cell.querySelector("svg")) continue;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox","0 0 380 160");
+    svg.setAttribute("width","380"); svg.setAttribute("height","160");
+    svg.innerHTML = `
+      <g font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#9c958a">
+        <line x1="44" y1="22"  x2="370" y2="22"  stroke="#EEE9DD" stroke-width="1"/>
+        <line x1="44" y1="65"  x2="370" y2="65"  stroke="#EEE9DD" stroke-width="1"/>
+        <line x1="44" y1="108" x2="370" y2="108" stroke="#EEE9DD" stroke-width="1"/>
+        <text x="36" y="26"  text-anchor="end">100</text>
+        <text x="36" y="69"  text-anchor="end">50</text>
+        <text x="36" y="112" text-anchor="end">0</text>
+        <text x="14" y="70" transform="rotate(-90 14 70)" text-anchor="middle" fill="#9c958a" font-size="13">acc (%)</text>
+      </g>
+      <g class="bars-grp">
+        <rect class="bar bar-id"   x="82"  y="108" width="68" height="0" rx="3" fill="#3B3B98"/>
+        <rect class="bar bar-rand" x="180" y="108" width="68" height="0" rx="3" fill="#B83C2B"/>
+        <rect class="bar bar-orc"  x="278" y="108" width="68" height="0" rx="3" fill="#D4A017"/>
+        <text class="num num-id"   x="116" y="104" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="16" font-weight="700" fill="#3B3B98"></text>
+        <text class="num num-rand" x="214" y="104" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="16" font-weight="700" fill="#B83C2B"></text>
+        <text class="num num-orc"  x="312" y="104" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="16" font-weight="700" fill="#D4A017"></text>
+        <text x="116" y="133" text-anchor="middle" font-size="15" fill="#3B3B98" font-weight="700">Id</text>
+        <text x="214" y="133" text-anchor="middle" font-size="15" fill="#B83C2B" font-weight="700">Rand</text>
+        <text x="312" y="133" text-anchor="middle" font-size="15" fill="#D4A017" font-weight="700">Orc</text>
+      </g>
+    `;
+    cell.appendChild(svg);
+  }
+}
+
+function setBar(cellId, idProgress, randProgress, orcProgress) {
+  const data = ACT3_DATA[cellId];
+  const cell = document.getElementById(cellId);
+  const svg = cell.querySelector("svg");
+  if (!svg) return;
+  const pxPerPct = 86 / data.max;  // 86px maps to 100% (axis 108 → 22)
+  const setOne = (cls, val, prog) => {
+    const rect = svg.querySelector(".bar-"+cls);
+    const text = svg.querySelector(".num-"+cls);
+    const h = val * pxPerPct * prog;
+    rect.setAttribute("height", h);
+    rect.setAttribute("y", 108 - h);
+    text.setAttribute("y", 108 - h - 5);
+    text.textContent = prog > 0.6 ? val.toFixed(2) : "";
+  };
+  setOne("id",   data.id,   idProgress);
+  setOne("rand", data.rand, randProgress);
+  setOne("orc",  data.orc,  orcProgress);
+}
+
+// ============================================================
+function setT(t) {
+  t = ((t % TOTAL_MS) + TOTAL_MS) % TOTAL_MS;
+  buildBars();
+
+  // ===== SCENE PHASE (combined Act 1 + Act 2): 0 – 16000ms =====
+  // Wrapper visible from 0 through 15500, fade out by 16000.
+  document.getElementById("scene-act").style.opacity = fadeWindow(t, 0, 500, 15500, 500);
+
+  // All persistent scene elements fade in once and stay through 15500ms.
+  // Fade-out is handled by the wrapper — children stay at opacity 1.
+  document.getElementById("scene-title").style.opacity   = fadeWindow(t, 300,  600, 15500, 0);
+  document.getElementById("image-panel").style.opacity   = fadeWindow(t, 200,  700, 15500, 0);
+  document.getElementById("speech-bubble").style.opacity = fadeWindow(t, 900,  600, 15500, 0);
+  document.getElementById("arrow-down").style.opacity    = fadeWindow(t, 1500, 500, 15500, 0);
+  document.getElementById("vlm-box").style.opacity       = fadeWindow(t, 1800, 600, 15500, 0);
+  document.getElementById("callout").style.opacity       = fadeWindow(t, 2400, 600, 15500, 0);
+  document.getElementById("callout-link").style.opacity  = fadeWindow(t, 3000, 600, 15500, 0);
+  document.getElementById("token-strip").style.opacity   = fadeWindow(t, 3000, 700, 15500, 0);
+  document.getElementById("variant-legend").style.opacity = fadeWindow(t, 4000, 600, 15500, 0);
+  document.getElementById("lock-badge").style.opacity    = fadeWindow(t, 4500, 500, 15500, 0);
+  document.getElementById("scene-caption").style.opacity = fadeWindow(t, 4800, 700, 15500, 0);
+
+  // Variant cycle: 6000 – 16000 ms, 5 × 2000ms each. Before 6000 = Identity (default state).
+  // After 16000 = stays on Oracle (final state).
+  let variantIdx = 0;
+  if (t >= 6000 && t < 16000) {
+    variantIdx = Math.min(4, Math.floor((t - 6000) / 2000));
+  } else if (t >= 16000) {
+    variantIdx = 4;
+  }
+  const v = VARIANTS[variantIdx];
+
+  // Update thought-token visuals.
+  for (let i = 0; i < 3; i++) {
+    const tk = document.getElementById("th" + i);
+    tk.textContent = v.contents[i];
+    tk.style.background = v.colors[i];
+    tk.style.color = v.textColor;
+    if (t >= 6000) {
+      const localInVariant = (t - 6000) % 2000;
+      const pulse = localInVariant < 360 ? (1 + 0.06 * (1 - localInVariant/360)) : 1;
+      tk.style.transform = `scale(${pulse})`;
+    } else {
+      tk.style.transform = "scale(1)";
+    }
+  }
+  // Update which variant chip in the persistent legend is highlighted.
+  document.querySelectorAll(".variant-chip").forEach((chip, idx) => {
+    chip.classList.toggle("active", idx === variantIdx);
+  });
+  const thoughtWrap = document.getElementById("thought-wrap");
+  if (v.name === "oracle") {
+    thoughtWrap.style.background = "rgba(212,160,23,0.12)";
+    thoughtWrap.style.borderColor = "rgba(212,160,23,0.7)";
+  } else if (v.name === "zero") {
+    thoughtWrap.style.background = "rgba(120,115,100,0.08)";
+    thoughtWrap.style.borderColor = "rgba(120,115,100,0.5)";
+  } else if (v.name === "random") {
+    thoughtWrap.style.background = "rgba(124,82,149,0.10)";
+    thoughtWrap.style.borderColor = "rgba(124,82,149,0.55)";
+  } else {
+    thoughtWrap.style.background = "rgba(230,126,34,0.10)";
+    thoughtWrap.style.borderColor = "rgba(230,126,34,0.55)";
+  }
+
+  // ===== ACT 3 (16000–30000ms, 14s): cells enter 1000ms apart, ~4.5s hold after caveat =====
+  document.getElementById("act3").style.opacity = fadeWindow(t, 16000, 500, 29500, 500);
+
+  // Cells enter sequentially, 1000ms apart, 700ms entry, 1200ms bar grow.
+  const cellEntry = {
+    "cell-cont-llava": 16500,
+    "cell-cont-qwen": 17500,
+    "cell-disc-llava": 18500,
+    "cell-disc-qwen": 19500,
+  };
+  for (const id of CELL_ORDER) {
+    const cell = document.getElementById(id);
+    const tEntry = cellEntry[id];
+    const entryProg = clamp01((t - tEntry) / 700);
+    cell.style.opacity = smoothstep(entryProg);
+    cell.style.transform = `translateY(${(1 - smoothstep(entryProg)) * 8}px)`;
+    const barProg = smoothstep(clamp01((t - tEntry - 350) / 1200));
+    setBar(id, barProg, barProg, barProg);
+    if (id === "cell-disc-qwen") {
+      const pulseT = t - 21000;
+      if (pulseT >= 0 && pulseT < 2000) {
+        cell.classList.add("highlight");
+      } else {
+        cell.classList.remove("highlight");
+      }
+    }
+  }
+
+  // Annotations and captions stagger in, then hold ~4.5s before wrapper fades at 29500ms.
+  // Right-side row callouts (carry the Continuous / Discrete bullets) + bottom §A.2 caveat.
+  document.getElementById("annot-cont").style.opacity   = fadeWindow(t, 19500, 700, 29500, 0);
+  document.getElementById("annot-disc").style.opacity   = fadeWindow(t, 21500, 700, 29500, 0);
+  document.getElementById("act3-caveat").style.opacity  = fadeWindow(t, 23500, 700, 29500, 0);
+
+  // ===== ACT 4 (30000–42000ms, 12s): rows 600ms apart, ~6.5s hold after closing line =====
+  document.getElementById("act4").style.opacity = fadeWindow(t, 30000, 500, 41500, 500);
+
+  const rowEntry = {
+    "row-id":      30600,
+    "row-1st":     31200,
+    "row-rand":    31800,
+    "row-zero":    32400,
+  };
+  for (const rid of Object.keys(rowEntry)) {
+    const row = document.getElementById(rid);
+    const tEntry = rowEntry[rid];
+    const p = smoothstep(clamp01((t - tEntry) / 500));
+    row.style.opacity = p;
+    row.style.transform = `translateY(${(1 - p) * 6}px)`;
+  }
+
+  document.getElementById("act4-closing").style.opacity = fadeWindow(t, 34500, 700, 41500, 0);
+
+  // ===== ACT 5 (42000–46000ms, 4s): 0.5s fade in, 3s hold, 0.4s fade out =====
+  document.getElementById("act5").style.opacity = fadeWindow(t, 42000, 500, 45500, 400);
+}
+
+const isRecord = new URLSearchParams(location.search).has("record");
+window.setT = setT;
+
+if (!isRecord) {
+  let started = performance.now();
+  function tick(now) {
+    const elapsed = (now - started);
+    setT(elapsed);
+    requestAnimationFrame(tick);
+  }
+  setT(0);
+  requestAnimationFrame(tick);
+} else {
+  setT(0);
+  window.__ready = true;
+}
+</script>
+</body>
+</html>

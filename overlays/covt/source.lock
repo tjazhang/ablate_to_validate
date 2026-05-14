@@ -1,0 +1,7 @@
+{
+  "id": "covt",
+  "repo_url": "https://github.com/Wakals/CoVT.git",
+  "commit": "3a3253ee462ad170cefeb10814530bf15329dd46",
+  "checkout_dir": "external/covt/upstream"
+}
+
