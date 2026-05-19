@@ -2,7 +2,9 @@
 
 \[[Read our arXiv Paper](TODO: add arXiv link)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
 
-Tianyi Zhang, [Mahtab Bigverdi](https://mahtabbigverdi.github.io/), [Ranjay Krishna](https://www.ranjaykrishna.com/)
+Tianyi Zhang<sup>*</sup>, [Mahtab Bigverdi](https://mahtabbigverdi.github.io/)<sup>*</sup>, [Ranjay Krishna](https://www.ranjaykrishna.com/)
+
+<sup>*</sup>Equal contribution
 
 ### Introduction
 
