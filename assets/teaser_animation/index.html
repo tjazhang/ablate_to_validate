@@ -218,7 +218,7 @@
     transform: translateY(-1px) scale(1.04);
   }
 
-  /* One persistent scene-phase caption — appears once and stays. */
+  /* Scene-phase captions — Beat A and Beat B cross-fade in place. */
   .scene-caption {
     position: absolute; left: 0; right: 0;
     top: 605px;
@@ -231,6 +231,45 @@
   }
   .scene-caption strong { color: var(--orange); font-weight: 700; }
   .scene-caption .quiet { color: var(--ink-soft); font-weight: 500; }
+  .scene-caption em { color: var(--indigo); font-style: normal; font-weight: 700; }
+
+  /* Highlight the final answer pill so it reads as the model's prediction. */
+  .token.answer-token {
+    background: rgba(23,138,107,0.12);
+    color: var(--green);
+    border: 1px solid rgba(23,138,107,0.45);
+    font-weight: 700;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.005em;
+    padding: 0 14px;
+  }
+
+  /* Reaction pill — sits to the RIGHT of the token strip, labels the model's answer. */
+  .answer-react {
+    position: absolute;
+    top: 528px;
+    right: 60px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px 10px 14px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  }
+  .answer-react .lbl {
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700;
+  }
+  .answer-react .val {
+    font-size: 17px; font-weight: 700; color: var(--green);
+    letter-spacing: -0.005em;
+  }
+  .answer-react #answer-face {
+    font-size: 24px; line-height: 1;
+    display: inline-flex; align-items: center;
+    transition: transform 220ms ease;
+    margin-left: 2px;
+  }
 
   /* ===================== ACT 3 (2x2 grid) ===================== */
   #act3 .heading {
@@ -482,9 +521,9 @@
     </div>
 
     <div class="callout" id="callout">
-      <div class="eyebrow">Auxiliary span</div>
+      <div class="eyebrow">Visual reasoning</div>
       <h3>The <code>&lt;Thought&gt;</code> tokens</h3>
-      <p>Continuous "thought" vectors inserted into the model's response.</p>
+      <p>Continuous or discrete tokens the model <strong>emits and later consumes</strong> for visual reasoning.</p>
       <p class="q">Do models actually use them?</p>
     </div>
 
@@ -506,23 +545,47 @@
         <div class="thought-token" id="th2">v₃</div>
       </div>
       <div class="token">→</div>
-      <div class="token">A</div>
-      <div class="token">…</div>
+      <div class="token answer-token">Point A</div>
     </div>
 
-    <div class="scene-caption" id="scene-caption">
+    <div class="answer-react" id="answer-react">
+      <div class="lbl">Model<br/>answers</div>
+      <div class="val">Point A</div>
+      <div id="answer-face">😊</div>
+    </div>
+
+    <div class="scene-caption" id="scene-caption-a">
+      <em>Standard inference</em> — the model <em>emits its own &lt;Thought&gt; tokens</em>, then answers.
+    </div>
+    <div class="scene-caption" id="scene-caption-b" style="opacity:0;">
       <strong>Token Replacement Test</strong> — swap only the <span style="color:var(--orange);font-weight:700;">&lt;Thought&gt;</span> tokens. <span class="quiet">Prompt + image stay fixed.</span>
     </div>
 
-    <!-- Curved orange link from callout to the Thought span. Placed last in the scene DOM so its arrowhead draws ON TOP of the token-strip's white box. -->
+    <!-- Beat A: dashed indigo arc from VLM box down/over to the thought span. Model emits its own tokens. -->
+    <svg class="callout-link" id="emit-link" viewBox="0 0 1280 672" style="opacity:0;">
+      <defs>
+        <marker id="emit-arrowhead" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
+          <path d="M 0 0 L 12 5 L 0 10 z" fill="#3B3B98"/>
+        </marker>
+      </defs>
+      <!-- VLM bottom-center (700,396) → curve down-left → arrowhead at top of thought-wrap (621,520). -->
+      <path d="M 700 396 C 700 450, 660 490, 621 520"
+            stroke="#3B3B98" stroke-width="2.5"
+            fill="none" stroke-dasharray="7 5"
+            stroke-linecap="round" stroke-linejoin="round"
+            marker-end="url(#emit-arrowhead)"/>
+      <text x="710" y="475" fill="#3B3B98" font-family="Inter, sans-serif"
+            font-size="13" font-weight="700" letter-spacing="0.06em">MODEL EMITS</text>
+    </svg>
+
+    <!-- Beat B: curved orange link from callout to the Thought span — TRT swap intervention. -->
     <svg class="callout-link" id="callout-link" viewBox="0 0 1280 672">
       <defs>
         <marker id="thought-arrowhead" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
           <path d="M 0 0 L 12 5 L 0 10 z" fill="#E67E22"/>
         </marker>
       </defs>
-      <!-- L-shape: long vertical drop, then a short horizontal that ends BEFORE the token-strip's right edge. -->
-      <path d="M 1000 353 L 1000 505 Q 1000 525 985 525 L 885 525"
+      <path d="M 1000 400 L 1000 505 Q 1000 525 985 525 L 885 525"
             stroke="#E67E22" stroke-width="2.5"
             fill="none" stroke-dasharray="7 5"
             stroke-linecap="round" stroke-linejoin="round"
@@ -748,11 +811,31 @@ function setT(t) {
   document.getElementById("arrow-down").style.opacity    = fadeWindow(t, 1500, 500, 15500, 0);
   document.getElementById("vlm-box").style.opacity       = fadeWindow(t, 1800, 600, 15500, 0);
   document.getElementById("callout").style.opacity       = fadeWindow(t, 2400, 600, 15500, 0);
-  document.getElementById("callout-link").style.opacity  = fadeWindow(t, 3000, 600, 15500, 0);
   document.getElementById("token-strip").style.opacity   = fadeWindow(t, 3000, 700, 15500, 0);
-  document.getElementById("variant-legend").style.opacity = fadeWindow(t, 4000, 600, 15500, 0);
+  document.getElementById("answer-react").style.opacity  = fadeWindow(t, 3400, 700, 15500, 0);
   document.getElementById("lock-badge").style.opacity    = fadeWindow(t, 4500, 500, 15500, 0);
-  document.getElementById("scene-caption").style.opacity = fadeWindow(t, 4800, 700, 15500, 0);
+
+  // Beat A elements (0 – ~6000ms): "model emits its own tokens, answers A"
+  document.getElementById("emit-link").style.opacity        = fadeWindow(t, 3600, 700, 5600, 400);
+  document.getElementById("scene-caption-a").style.opacity  = fadeWindow(t, 4200, 700, 5600, 400);
+
+  // Beat B elements (~6000 – 15500ms): TRT swap — callout arrow, variant legend, swap caption.
+  // Fade-ins begin at 5800ms so the two beats overlap by ~200ms (no blank caption gap).
+  document.getElementById("callout-link").style.opacity     = fadeWindow(t, 5800, 600, 15500, 0);
+  document.getElementById("variant-legend").style.opacity   = fadeWindow(t, 5800, 600, 15500, 0);
+  document.getElementById("scene-caption-b").style.opacity  = fadeWindow(t, 5800, 600, 15500, 0);
+
+  // Reaction face: 😊 in Beat A, 😮 in Beat B (with a tiny pop on the switch).
+  const face = document.getElementById("answer-face");
+  if (t < 6000) {
+    face.textContent = "😊";
+    face.style.transform = "scale(1)";
+  } else {
+    face.textContent = "😮";
+    const dt = t - 6000;
+    const pop = dt < 280 ? (1 + 0.25 * (1 - dt/280)) : 1;
+    face.style.transform = `scale(${pop})`;
+  }
 
   // Variant cycle: 6000 – 16000 ms, 5 × 2000ms each. Before 6000 = Identity (default state).
   // After 16000 = stays on Oracle (final state).

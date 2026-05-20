@@ -1,6 +1,6 @@
 # Ablate-to-Validate: Testing Whether Vision-Language Models Actually Use Latent Visual Tokens
 
-\[[Read our arXiv Paper](TODO: add arXiv link)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
+\[[arXiv](TODO: add arXiv link)\] &nbsp; \[[Paper PDF](docs/assets/atv_paper.pdf)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
 
 Tianyi Zhang<sup>*</sup>, [Mahtab Bigverdi](https://mahtabbigverdi.github.io/)<sup>*</sup>, [Ranjay Krishna](https://www.ranjaykrishna.com/)
 
