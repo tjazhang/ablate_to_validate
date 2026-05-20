@@ -69,9 +69,9 @@
     h1 {
       font-family: "Noto Serif", Georgia, serif;
       font-weight: 700;
-      font-size: clamp(1.8rem, 4.2vw, 3.4rem);
-      line-height: 1.08;
-      letter-spacing: -0.035em;
+      font-size: clamp(1.4rem, 2.8vw, 2.2rem);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
       margin: 0 0 12px;
     }
 
@@ -402,20 +402,42 @@
       <h2 id="abstract-title">Abstract</h2>
 
       <p class="abstract">
-        Vision-language models are increasingly augmented with continuous or latent
-        non-textual tokens intended to support visual thinking. However, improved
-        task accuracy alone does not prove that models use these tokens for reasoning:
-        gains may arise from added context length, special-token anchoring, or
-        training-time regularization. We introduce <strong>Ablate-to-Validate</strong>,
-        a diagnostic principle for testing whether latent-token content is genuinely
-        utilized, and instantiate it as the <strong>Token Replacement Test</strong>
-        (TRT), a suite of content-replacement ablations. TRT holds the prompt,
-        image, token budget, and decoding procedure fixed while replacing
-        intermediate thought tokens with zero, random, first-repeat,
-        distribution-matched, or oracle alternatives. Across depth reasoning
-        testbeds and off-the-shelf visual-thinking mechanisms, TRT reveals a
-        recurring gap between having an auxiliary latent channel and using it as
-        an information-bearing bottleneck.
+        Vision-language models (VLMs) are increasingly augmented with continuous
+        or latent non-textual tokens intended to support &ldquo;visual
+        thinking.&rdquo; Despite the improved task accuracy, this alone does not
+        show that models actually use these tokens for reasoning. Gains may
+        instead arise from confounds such as added context length, special-token
+        anchoring, or training-time regularization. We formalize a diagnostic
+        principle, <strong>Ablate-to-Validate</strong>, for testing whether
+        latent-token content is genuinely utilized. We instantiate this principle
+        as the <strong>Token Replacement Test (TRT)</strong>, a standardized
+        suite of content-replacement ablations. TRT measures whether performance
+        depends on the information carried by latent tokens rather than their
+        mere presence. It probes (1) <em>span-position bias</em> through zero
+        and random replacement, (2) disentangles <em>token-budget from
+        token-diversity</em> effects through first-repeat and count-matched
+        variants, and (3) evaluates information content using oracle or
+        <em>ground-truth token injection</em> together with distribution-matched
+        random baselines. As a controlled testbed, we study relative depth
+        reasoning, where continuous depth embeddings can be inserted at explicit
+        span positions under a fixed token budget. We train LLaVA and
+        Qwen2.5-VL models both to predict and to consume these tokens, and show
+        that TRT applies across heterogeneous latent-token model backbones.
+        Concretely, we cover two trained backbones (LLaVA-13B, Qwen2.5-VL-3B)
+        with continuous and discrete depth spans across three frozen visual
+        encoders (SigLIP2, CLIP, DINOv2) and multiple token budgets, and
+        additionally apply TRT to three off-the-shelf visual-thinking systems
+        (Mirage, Mull-Tokens, CoVT) evaluated on BLINK, VSP, and CV-Bench. Our
+        results show that accuracy gains can be a misleading proxy for
+        latent-token reasoning: across multiple model backbones, types of
+        continuous visual tokens, and compute budgets, VLMs retain most of the
+        improvement even when latent-token content is corrupted or replaced,
+        revealing a persistent gap between &ldquo;having a latent channel&rdquo;
+        and actually using it as an information bottleneck. By separating true
+        content utilization from alternative explanations, TRT provides a simple
+        and standardized way to evaluate continuous thought tokens in
+        vision-language models, and we recommend reporting such diagnostics as
+        standard practice.
       </p>
     </section>
 
