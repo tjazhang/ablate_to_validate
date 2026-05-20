@@ -18,12 +18,12 @@ Vision-language models (VLMs) are increasingly augmented with continuous or late
 
 <p align="center">
   <video src="docs/assets/atv_teaser.mp4" autoplay loop muted playsinline controls width="700">
-    Your browser does not render embedded video. <a href="docs/assets/atv_teaser.mp4">Watch the 46&nbsp;s animated explainer (MP4)</a>.
+    Your browser does not render embedded video. <a href="docs/assets/atv_teaser.mp4">Watch the animated explainer (MP4)</a>.
   </video>
 </p>
 
 <p align="center">
-  <em>▶ <a href="docs/assets/atv_teaser.mp4">46&nbsp;s animated explainer</a> · <a href="https://tjazhang.github.io/ablate_to_validate/">project page</a> · <a href="assets/teaser_animation/">animation source</a></em>
+  <em>▶ <a href="docs/assets/atv_teaser.mp4">animated explainer</a> · <a href="https://tjazhang.github.io/ablate_to_validate/">project page</a> · <a href="assets/teaser_animation/">animation source</a></em>
 </p>
 
 ---
