@@ -645,7 +645,7 @@
       <thead>
         <tr>
           <th class="row-label">Replacement</th>
-          <th class="method-cell"><div>Mirage</div><span class="task">HardBLINK depth (Qwen2.5-VL-7B)</span></th>
+          <th class="method-cell"><div>Mirage</div><span class="task">VSP Spatial Planning (Qwen2.5-VL-7B)</span></th>
           <th class="method-cell"><div>Mull-Tokens</div><span class="task">BLINK (Qwen2.5-VL-Mull)</span></th>
           <th class="method-cell"><div>CoVT</div><span class="task">CV-Bench avg 2D + 3D (LLaVA-13B)</span></th>
         </tr>
@@ -653,25 +653,25 @@
       <tbody>
         <tr id="row-id">
           <td class="row-label">Identity</td>
-          <td class="num id-cell">26.08</td>
+          <td class="num id-cell">76.25</td>
           <td class="num id-cell">63.71</td>
           <td class="num id-cell">78.55</td>
         </tr>
         <tr id="row-1st">
           <td class="row-label">First-repeat</td>
-          <td class="num">26.61</td>
+          <td class="num">75.75</td>
           <td class="num">63.71</td>
           <td class="num">78.55</td>
         </tr>
         <tr id="row-rand">
           <td class="row-label">Random</td>
-          <td class="num">18.82</td>
+          <td class="num">74.75</td>
           <td class="num">63.86</td>
           <td class="num hilite">20.20</td>
         </tr>
         <tr id="row-zero">
           <td class="row-label">Zero</td>
-          <td class="num hilite">8.06</td>
+          <td class="num hilite">51.50</td>
           <td class="num">63.43</td>
           <td class="num">63.99</td>
         </tr>
@@ -679,7 +679,7 @@
     </table>
 
     <div class="closing" id="act4-closing">
-      <em>Content</em> of visual tokens matters less than their <em>presence</em> in many settings.
+      <em>First-repeat</em> ≈ identity throughout — token <em>diversity</em> rarely drives the gains.
     </div>
   </div>
 
