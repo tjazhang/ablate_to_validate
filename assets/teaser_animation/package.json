@@ -9,6 +9,8 @@
     "encode:mp4": "ffmpeg -y -framerate 30 -i frames/%04d.png -vf \"setpts=2.0*PTS\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart -preset slow -crf 18 atv_teaser.mp4",
     "encode:gif": "ffmpeg -y -i frames/%04d.png -vf \"fps=20,scale=960:-1:flags=lanczos,palettegen=stats_mode=full\" palette.png && ffmpeg -y -framerate 30 -i frames/%04d.png -i palette.png -lavfi \"setpts=2.0*PTS,fps=20,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5\" atv_teaser.gif",
     "build": "npm run record && npm run encode:mp4 && npm run encode:gif",
+    "copy:assets": "cp atv_teaser.mp4 ../../docs/assets/atv_teaser.mp4 && cp atv_teaser.gif ../../docs/assets/atv_teaser.gif",
+    "publish": "npm run build && npm run copy:assets",
     "clean": "rm -rf frames atv_teaser.mp4 atv_teaser.gif palette.png"
   },
   "dependencies": {

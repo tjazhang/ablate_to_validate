@@ -1,8 +1,8 @@
 # Teaser-animation source
 
-Backup of the source that produces the 46&nbsp;s explainer video shown on the project page (`docs/index.html` &rarr; "Video Explanation") and in the repo README.
+Source of truth for the 46&nbsp;s explainer video shown on the project page (`docs/index.html` &rarr; "Video Explanation") and in the repo README.
 
-The rendered MP4 lives at [`docs/assets/atv_teaser.mp4`](../../docs/assets/atv_teaser.mp4); the source here regenerates it.
+The rendered outputs live at [`docs/assets/atv_teaser.mp4`](../../docs/assets/atv_teaser.mp4) and [`docs/assets/atv_teaser.gif`](../../docs/assets/atv_teaser.gif); the source here regenerates them.
 
 ## Files
 
@@ -13,21 +13,24 @@ The rendered MP4 lives at [`docs/assets/atv_teaser.mp4`](../../docs/assets/atv_t
 
 ## Rebuild
 
+One-shot — record, encode, and copy both outputs into `docs/assets/`:
+
 ```bash
 cd assets/teaser_animation
 npm install            # one time
-npm run build          # record + encode mp4 + encode gif
+npm run publish        # build + copy mp4 and gif into docs/assets/
 ```
 
-Outputs land next to the scripts:
-- `atv_teaser.mp4` (H.264, 1280&times;720, 30&nbsp;fps, ~1.1&nbsp;MB)
-- `atv_teaser.gif` (960&times;540, 20&nbsp;fps, ~2.4&nbsp;MB)
-
-After rebuilding, copy the MP4 over the one served by the project page:
+If you want the steps separately:
 
 ```bash
-cp atv_teaser.mp4 ../../docs/assets/atv_teaser.mp4
+npm run build          # record + encode mp4 + encode gif (outputs stay here)
+npm run copy:assets    # cp atv_teaser.{mp4,gif} ../../docs/assets/
 ```
+
+Output sizes:
+- `atv_teaser.mp4` (H.264, 1280&times;720, 30&nbsp;fps, ~1.8&nbsp;MB)
+- `atv_teaser.gif` (960&times;540, 20&nbsp;fps, ~3.5&nbsp;MB)
 
 ## Requirements
 
