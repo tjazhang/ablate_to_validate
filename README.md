@@ -1,6 +1,6 @@
 # Ablate-to-Validate: Are Vision-Language Models Really Using Visual Reasoning Tokens?
 
-\[[arXiv](TODO: add arXiv link)\] &nbsp; \[[Paper PDF](docs/assets/atv_paper.pdf)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
+\[[arXiv](https://arxiv.org/abs/2605.21642)\] &nbsp; \[[Paper PDF](docs/assets/atv_paper.pdf)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
 
 Tianyi Zhang<sup>*</sup>, [Mahtab Bigverdi](https://mahtabbigverdi.github.io/)<sup>*</sup>, [Ranjay Krishna](https://www.ranjaykrishna.com/)
 
