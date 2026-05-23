@@ -330,9 +330,51 @@
       font-size: 0.92rem;
     }
 
+    .warn-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 16px 0 18px;
+      padding: 12px 14px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .warn-banner .icon { color: #2b2b2b; font-weight: 700; }
+    .warn-banner strong { color: var(--text); font-weight: 700; }
+
+    .method-cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 4px;
+    }
+
+    .method-card .method-meta {
+      margin: 4px 0 10px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+    .method-card .method-meta strong { color: var(--text); font-weight: 600; }
+    .method-card .verdict {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    .method-card .verdict em { font-style: normal; font-weight: 700; color: var(--text); }
+    .method-card .metrics-row { margin-top: 6px; }
+    .method-card .metric { font-size: 0.85rem; padding: 6px 10px; margin: 6px 6px 0 0; }
+
     @media (max-width: 760px) {
       .pipeline,
-      .results-grid {
+      .results-grid,
+      .method-cards {
         grid-template-columns: 1fr;
       }
 
@@ -358,7 +400,7 @@
     <header class="hero">
       <h1>
         Ablate-to-Validate:<br>
-        Are Vision-Language Models Really Using Continuous Thought Tokens?
+        Are Vision-Language Models Really Using Visual Reasoning Tokens?
       </h1>
 
       <div class="authors">
@@ -403,7 +445,7 @@
       <p class="abstract">
         Vision-language models (VLMs) are increasingly augmented with continuous
         or latent non-textual tokens intended to support &ldquo;visual
-        thinking.&rdquo; Despite the improved task accuracy, this alone does not
+        reasoning.&rdquo; Despite the improved task accuracy, this alone does not
         show that models actually use these tokens for reasoning. Gains may
         instead arise from confounds such as added context length, special-token
         anchoring, or training-time regularization. We formalize a diagnostic
@@ -425,7 +467,7 @@
         Concretely, we cover two trained backbones (LLaVA-13B, Qwen2.5-VL-3B)
         with continuous and discrete depth spans across three frozen visual
         encoders (SigLIP2, CLIP, DINOv2) and multiple token budgets, and
-        additionally apply TRT to three off-the-shelf visual-thinking systems
+        additionally apply TRT to three off-the-shelf visual reasoning systems
         (Mirage, Mull-Tokens, CoVT) evaluated on BLINK, VSP, and CV-Bench. Our
         results show that accuracy gains can be a misleading proxy for
         latent-token reasoning: across multiple model backbones, types of
@@ -434,7 +476,7 @@
         revealing a persistent gap between &ldquo;having a latent channel&rdquo;
         and actually using it as an information bottleneck. By separating true
         content utilization from alternative explanations, TRT provides a simple
-        and standardized way to evaluate continuous thought tokens in
+        and standardized way to evaluate visual reasoning tokens in
         vision-language models, and we recommend reporting such diagnostics as
         standard practice.
       </p>
@@ -470,10 +512,10 @@
 
         <div class="pipeline">
           <article class="pipeline-card">
-            <h3>1. VLMs + Auxiliary Tokens</h3>
+            <h3>1. VLMs + Visual Reasoning Tokens</h3>
             <p>
               A vision-language model answers visual reasoning questions while
-              producing an intermediate auxiliary or continuous thought-token span.
+              producing an intermediate visual reasoning token span.
             </p>
 
         
@@ -482,8 +524,8 @@
           <article class="pipeline-card">
             <h3>2. Token Replacement Test</h3>
             <p>
-              Keep the prompt and image fixed, then replace only the thought-token
-              content to isolate what the model actually consumes.
+              Keep the prompt and image fixed, then replace only the visual reasoning
+              token content to isolate what the model actually consumes.
             </p>
           </article>
 
@@ -504,7 +546,7 @@
 
       <div class="results-grid">
         <article class="result-card">
-          <h3>Continuous spans are weakly content-sensitive</h3>
+          <h3>Continuous latent spans are weakly content-sensitive</h3>
           <p>
             For continuous depth spans, random and first-repeat replacements produce
             limited changes, while oracle depth tokens provide little or no headroom.
@@ -578,54 +620,117 @@
 
       <p class="abstract">
         TRT is not specific to our depth testbed. We also apply it to three
-        off-the-shelf "visual thinking" methods &mdash; Mirage, Mull-Tokens,
-        and CoVT &mdash; spanning multiple backbones and benchmarks. Across
-        all of them, the same content&ndash;utility gap recurs: token content
-        can be replaced or corrupted with little change in accuracy.
-        Representative numbers below; full breakdown in the paper.
+        off-the-shelf &ldquo;visual reasoning&rdquo; methods &mdash; Mirage,
+        Mull-Tokens, and CoVT &mdash; each on its own primary benchmark.
+        Each card stands on its own; the within-method delta is the signal.
       </p>
 
-      <table aria-label="TRT applied to off-the-shelf methods">
-        <thead>
-          <tr>
-            <th>Method</th>
-            <th>Backbone</th>
-            <th>Benchmark</th>
-            <th>Identity</th>
-            <th>Random</th>
-            <th>Zero</th>
-          </tr>
-        </thead>
+      <div class="warn-banner">
+        <span class="icon">&#9888;</span>
+        <span>
+          <strong>Numbers are not comparable across cards.</strong>
+          Different tasks, different baselines.
+          <em>Read each card on its own;</em> the within-method delta is the signal.
+        </span>
+      </div>
 
-        <tbody>
-          <tr>
-            <td>Mirage</td>
-            <td>Qwen2.5-VL-7B</td>
-            <td>VSP (Spatial Planning)</td>
-            <td>76.25</td>
-            <td>74.75</td>
-            <td>51.50</td>
-          </tr>
+      <div class="method-cards">
+        <!-- =========== Mirage =========== -->
+        <article class="result-card method-card">
+          <h3>Mirage</h3>
+          <p class="method-meta">
+            Backbone: <strong>Qwen2.5-VL-7B</strong><br>
+            Training: 2-stage, latent + text &rarr; text-only<br>
+            Eval: <strong>VSP-SP</strong> (Spatial Planning)
+          </p>
+          <div class="metrics-row">
+            <span class="metric">Identity 76.25</span>
+            <span class="metric">1st-repeat 75.75</span>
+            <span class="metric">Random 74.75</span>
+            <span class="metric">Zero 51.50</span>
+          </div>
+          <p class="verdict">
+            Zero <em>moderately degrades</em> SP; random and first-repeat sit <em>near identity</em>.
+          </p>
+        </article>
 
-          <tr>
-            <td>Mull-Tokens</td>
-            <td>Qwen2.5-VL-7B</td>
-            <td>BLINK (mean acc)</td>
-            <td>63.71</td>
-            <td>63.86</td>
-            <td>63.43</td>
-          </tr>
+        <!-- =========== Mull-Tokens =========== -->
+        <article class="result-card method-card">
+          <h3>Mull-Tokens</h3>
+          <p class="method-meta">
+            Backbone: <strong>Qwen2.5-VL-7B</strong><br>
+            Training: 2-stage SFT, anchored &rarr; free-form<br>
+            Eval: <strong>BLINK</strong> (mean acc)
+          </p>
+          <div class="metrics-row">
+            <span class="metric">Identity 63.71</span>
+            <span class="metric">1st-repeat 63.71</span>
+            <span class="metric">Random 63.86</span>
+            <span class="metric">Zero 63.43</span>
+          </div>
+          <p class="verdict">
+            First-repeat matches baseline; random latents induce only small changes,
+            <em>consistent with token presence dominating diversity</em>.
+          </p>
+        </article>
 
-          <tr>
-            <td>CoVT</td>
-            <td>LLaVA-13B</td>
-            <td>CV-Bench 2D (overall)</td>
-            <td>76.26</td>
-            <td>21.39</td>
-            <td>58.97</td>
-          </tr>
-        </tbody>
-      </table>
+        <!-- =========== CoVT =========== -->
+        <article class="result-card method-card">
+          <h3>CoVT</h3>
+          <p class="method-meta">
+            Backbone: <strong>LLaVA-13B</strong><br>
+            Training: 4-stage distillation curriculum<br>
+            Eval: <strong>CV-Bench-2D</strong> (overall)
+          </p>
+          <div class="metrics-row">
+            <span class="metric">Identity 76.26</span>
+            <span class="metric">1st-repeat 76.26</span>
+            <span class="metric">Random 21.39</span>
+            <span class="metric">Zero 58.97</span>
+          </div>
+          <p class="verdict">
+            Pure random collapses performance; distribution-matched random
+            <em>largely recovers</em> it, <em>consistent with reliance on
+            distributional statistics</em> over fine-grained content.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="signatures-title">
+      <h2 id="signatures-title">Three TRT Signatures</h2>
+
+      <p class="abstract">
+        When any of these show up in a latent-token method, the gain is unlikely
+        to be driven by token <em>content</em>. Each can produce accuracy gains
+        without the model reading the tokens' content.
+      </p>
+
+      <div class="pipeline">
+        <article class="pipeline-card">
+          <h3>1. Corruption tolerated</h3>
+          <p>
+            <code>zero</code> / <code>random</code> replacement preserves the gain.
+            Even corrupted content doesn't punish the model.
+          </p>
+        </article>
+
+        <article class="pipeline-card">
+          <h3>2. Diversity unused</h3>
+          <p>
+            <code>first-repeat</code> suffices. A single vector tiled <em>K</em>
+            times keeps performance up, so diversity isn't doing the work.
+          </p>
+        </article>
+
+        <article class="pipeline-card">
+          <h3>3. Content unused</h3>
+          <p>
+            <code>oracle</code> (GT) injection adds no headroom. Even a perfect
+            signal isn't being read.
+          </p>
+        </article>
+      </div>
     </section>
 
     <section aria-labelledby="takeaway-title">
@@ -633,16 +738,35 @@
 
       <p class="abstract">
         <strong>Token Replacement Test (TRT) is a task-agnostic,
-        intervention-based diagnostic for latent-token reasoning in
-        vision-language models.</strong> By replacing the auxiliary span while
+        intervention-based diagnostic for latent visual reasoning in
+        vision-language models.</strong> By replacing the visual reasoning span while
         holding prompt, image, token budget, and decoding fixed, TRT exposes
-        whether a model truly uses the <em>content</em> of its visual tokens.
+        whether a model truly uses the <em>content</em> of its visual reasoning tokens.
         Across our depth testbed and three off-the-shelf methods (Mirage,
-        Mull-Tokens, CoVT), continuous visual tokens are often not causally
-        used at inference &mdash; accuracy gains alone are not evidence of
-        utilization, and TRT should accompany any claim about latent or
-        continuous "thought tokens."
+        Mull-Tokens, CoVT), visual reasoning tokens are often not causally
+        used at inference. Accuracy gains alone are not evidence of
+        utilization, and TRT should accompany any claim about latent
+        visual reasoning tokens.
       </p>
+
+      <p class="abstract" style="margin-top: 18px; font-weight: 600;">
+        Report <strong>TRT</strong> alongside accuracy. A simple,
+        inference-time diagnostic. Run it before claiming your model uses its
+        visual reasoning tokens.
+      </p>
+    </section>
+
+    <section aria-labelledby="citation-title">
+      <h2 id="citation-title">Citation</h2>
+      <p>If you find this work useful, please cite:</p>
+<pre><code>@article{zhang2026ablate,
+  title         = {Ablate-to-Validate: Are Vision-Language Models Really Using Continuous Thought Tokens?},
+  author        = {Zhang, Tianyi and Bigverdi, Mahtab and Krishna, Ranjay},
+  year          = {2026},
+  eprint        = {2605.21642},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV}
+}</code></pre>
     </section>
 
     <footer>

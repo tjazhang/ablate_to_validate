@@ -1,5 +1,12 @@
 external/*
 !external/.gitkeep
+
+# Local-only working files (editorial drafts, cross-artifact notes,
+# scratchpads, Twitter copy, etc.). Everything under local/ stays on
+# disk but never reaches the public remote. Drop new local files here
+# instead of adding per-file gitignore rules.
+local/
+
 __pycache__/
 *.pyc
 *.pyo

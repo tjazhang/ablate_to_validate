@@ -347,89 +347,140 @@
     line-height: 1.4;
   }
 
-  /* ===================== ACT 4 (TRANSPOSED table) ===================== */
+  /* ===================== ACT 4 (3 method cards, slide-9 layout) =====================
+     Each card stands on its own — different tasks, different baselines.
+     The cross-card warning makes the incomparability explicit. */
   #act4 .heading {
-    position: absolute; top: 22px; left: 40px; right: 40px;
+    position: absolute; top: 18px; left: 30px; right: 30px;
   }
   #act4 .heading h2 {
-    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.015em;
+    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--ink); line-height: 1.1;
   }
   #act4 .heading .sub {
-    margin-top: 6px; font-size: 15px; color: var(--ink-soft);
-    max-width: 1100px; line-height: 1.35;
+    margin-top: 4px; font-size: 13px; color: var(--ink-soft);
+    font-weight: 500; line-height: 1.4;
   }
 
-  /* methods are columns, replacements are rows */
-  #act4 table {
-    position: absolute; top: 132px; left: 50%; transform: translateX(-50%);
-    width: 920px;
-    border-collapse: separate;
-    border-spacing: 0;
+  #act4 .warn-banner {
+    position: absolute; top: 88px; left: 30px; right: 30px;
+    background: rgba(230,126,34,0.08);
+    border: 1px solid rgba(230,126,34,0.35);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 13px; color: var(--ink); font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    line-height: 1.4;
+    opacity: 0;
+  }
+  #act4 .warn-banner .icon { font-size: 16px; color: var(--orange); font-weight: 700; }
+  #act4 .warn-banner strong { color: var(--red); font-weight: 700; }
+  #act4 .warn-banner em { color: var(--ink); font-style: italic; font-weight: 600; }
+
+  #act4 .cards-row {
+    position: absolute; top: 138px; left: 30px; right: 30px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    height: 295px;
+  }
+  #act4 .mcard {
     background: var(--paper);
     border: 1px solid var(--rule);
     border-radius: 14px;
-    overflow: hidden;
+    padding: 14px 16px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.05);
-    font-size: 16px;
+    display: flex; flex-direction: column;
+    opacity: 0; transform: translateY(6px);
   }
-  #act4 th, #act4 td {
-    padding: 12px 14px;
-    text-align: center;
+  #act4 .mcard .mname {
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  #act4 .mcard .meta-row {
+    display: flex; flex-direction: column; gap: 4px;
+    margin: 6px 0 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--rule);
   }
-  #act4 th.row-label, #act4 td.row-label {
-    text-align: left;
-    width: 200px;
-    background: #F8F4E9;
-    font-size: 14px;
-    color: var(--ink);
-    font-weight: 700;
-    letter-spacing: 0.02em;
+  #act4 .mcard .meta-line {
+    display: flex; gap: 8px; font-size: 11px; line-height: 1.3;
   }
-  #act4 thead th {
-    background: #F4EFE4;
-    font-size: 16px;
+  #act4 .mcard .meta-line .lbl {
+    color: var(--gray-deep);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     font-weight: 700;
-    color: var(--ink);
-    letter-spacing: -0.005em;
+    flex: 0 0 64px;
   }
-  #act4 thead th.method-cell .task {
-    display: block;
-    font-size: 14px;
-    color: var(--ink-soft);
-    font-weight: 500;
+  #act4 .mcard .meta-line .val {
+    color: var(--ink);
+    font-weight: 600;
+    flex: 1;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+  }
+  #act4 .mcard .mchart {
+    display: flex; flex-direction: column; gap: 7px;
     margin-top: 4px;
-    letter-spacing: 0;
   }
-  #act4 td.num {
-    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    font-size: 18px;
+  #act4 .mcard .barline {
+    display: grid;
+    grid-template-columns: 84px 1fr 50px;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  #act4 .mcard .barline .blab {
+    color: var(--ink);
+    font-weight: 600;
+    text-align: right;
+  }
+  #act4 .mcard .barline .btrack {
+    height: 18px;
+    background: rgba(0,0,0,0.04);
+    border-radius: 5px;
+    position: relative;
+    overflow: hidden;
+  }
+  #act4 .mcard .barline .bfill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 0;
+    border-radius: 5px;
+  }
+  #act4 .mcard .barline .bfill.identity { background: var(--indigo); }
+  #act4 .mcard .barline .bfill.firstrep { background: var(--purple); }
+  #act4 .mcard .barline .bfill.random   { background: var(--red); }
+  #act4 .mcard .barline .bfill.zero     { background: var(--gray-deep); }
+  #act4 .mcard .barline .bnum {
+    font-family: ui-monospace, Menlo, monospace;
     font-variant-numeric: tabular-nums;
-    font-weight: 600;
-  }
-  #act4 td.id-cell {
-    background: rgba(59,59,152,0.08);
-  }
-  #act4 td.hilite {
-    background: rgba(184,60,43,0.12);
-    color: var(--red);
     font-weight: 700;
+    color: var(--ink);
+    text-align: right;
+    font-size: 13px;
   }
-  #act4 tbody tr { opacity: 0; transform: translateY(6px); }
-  #act4 .pattern-row td {
-    background: #FAF6EC;
-    font-size: 15px;
-    color: var(--ink-soft);
-    font-weight: 600;
-    font-style: normal;
+  #act4 .mcard .verdict {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 9px;
+    background: rgba(247, 243, 233, 0.7);
+    border: 1px solid var(--rule);
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--ink);
+    font-style: italic;
   }
+  #act4 .mcard .verdict em { font-style: normal; color: var(--ink); font-weight: 700; }
 
-  /* Sits ~24px under the table, not 100+px below it. */
   #act4 .closing {
-    position: absolute; left: 40px; right: 40px;
-    top: 470px;
+    position: absolute; left: 30px; right: 30px;
+    top: 460px;
     text-align: center;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 600;
     color: var(--ink);
     letter-spacing: -0.005em;
@@ -478,7 +529,7 @@
   <!-- ===================== ACT 1 / 2 (shared scene) ===================== -->
   <div id="scene-act" class="act">
     <div class="scene-title" id="scene-title">
-      <h2>Do VLMs really use their <span class="accent">thought tokens</span>?</h2>
+      <h2>Do VLMs really use their <span class="accent">visual reasoning tokens</span>?</h2>
     </div>
 
     <div class="image-panel" id="image-panel">
@@ -632,54 +683,129 @@
     </div>
   </div>
 
-  <!-- ===================== ACT 4 (transposed table) ===================== -->
+  <!-- ===================== ACT 4 (three method cards) ===================== -->
   <div id="act4" class="act">
     <div class="heading">
-      <h2>TRT beyond the controlled depth pipeline</h2>
+      <h2>TRT beyond depth: three off-the-shelf systems</h2>
       <div class="sub">
-        Task-agnostic, inference-time diagnostic — three off-the-shelf methods · two backbone families · six benchmarks · four training paradigms. <span style="color:var(--gray-deep);">(§A.2)</span>
+        Same diagnostic, applied to each system on its own primary benchmark. <span style="color:var(--gray-deep);">(§A.2)</span>
       </div>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th class="row-label">Replacement</th>
-          <th class="method-cell"><div>Mirage</div><span class="task">VSP Spatial Planning (Qwen2.5-VL-7B)</span></th>
-          <th class="method-cell"><div>Mull-Tokens</div><span class="task">BLINK (Qwen2.5-VL-Mull)</span></th>
-          <th class="method-cell"><div>CoVT</div><span class="task">CV-Bench avg 2D + 3D (LLaVA-13B)</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr id="row-id">
-          <td class="row-label">Identity</td>
-          <td class="num id-cell">76.25</td>
-          <td class="num id-cell">63.71</td>
-          <td class="num id-cell">78.55</td>
-        </tr>
-        <tr id="row-1st">
-          <td class="row-label">First-repeat</td>
-          <td class="num">75.75</td>
-          <td class="num">63.71</td>
-          <td class="num">78.55</td>
-        </tr>
-        <tr id="row-rand">
-          <td class="row-label">Random</td>
-          <td class="num">74.75</td>
-          <td class="num">63.86</td>
-          <td class="num hilite">20.20</td>
-        </tr>
-        <tr id="row-zero">
-          <td class="row-label">Zero</td>
-          <td class="num hilite">51.50</td>
-          <td class="num">63.43</td>
-          <td class="num">63.99</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="warn-banner" id="act4-warn">
+      <span class="icon">⚠</span>
+      <span><strong>Different tasks, different baselines.</strong> <em>Read each card on its own.</em></span>
+    </div>
+
+    <div class="cards-row">
+      <!-- =========== Mirage =========== -->
+      <div class="mcard" id="mcard-mirage">
+        <div class="mname">Mirage</div>
+        <div class="meta-row">
+          <div class="meta-line"><span class="lbl">Backbone</span><span class="val">Qwen2.5-VL-7B</span></div>
+          <div class="meta-line"><span class="lbl">Training</span><span class="val">2-stage: latent + text → text-only</span></div>
+          <div class="meta-line"><span class="lbl">Eval</span><span class="val">VSP-SP (Spatial Planning)</span></div>
+        </div>
+        <div class="mchart">
+          <div class="barline">
+            <span class="blab">Identity</span>
+            <span class="btrack"><span class="bfill identity" data-target="76.25"></span></span>
+            <span class="bnum">76.25</span>
+          </div>
+          <div class="barline">
+            <span class="blab">1st-repeat</span>
+            <span class="btrack"><span class="bfill firstrep" data-target="75.75"></span></span>
+            <span class="bnum">75.75</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Random</span>
+            <span class="btrack"><span class="bfill random" data-target="74.75"></span></span>
+            <span class="bnum">74.75</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Zero</span>
+            <span class="btrack"><span class="bfill zero" data-target="51.50"></span></span>
+            <span class="bnum">51.50</span>
+          </div>
+        </div>
+        <div class="verdict">
+          <em>Zero hurts.</em> Random ≈ identity.
+        </div>
+      </div>
+
+      <!-- =========== Mull-Tokens =========== -->
+      <div class="mcard" id="mcard-mull">
+        <div class="mname">Mull-Tokens</div>
+        <div class="meta-row">
+          <div class="meta-line"><span class="lbl">Backbone</span><span class="val">Qwen2.5-VL-7B</span></div>
+          <div class="meta-line"><span class="lbl">Training</span><span class="val">2-stage SFT: anchored → free-form</span></div>
+          <div class="meta-line"><span class="lbl">Eval</span><span class="val">BLINK (mean acc)</span></div>
+        </div>
+        <div class="mchart">
+          <div class="barline">
+            <span class="blab">Identity</span>
+            <span class="btrack"><span class="bfill identity" data-target="63.71"></span></span>
+            <span class="bnum">63.71</span>
+          </div>
+          <div class="barline">
+            <span class="blab">1st-repeat</span>
+            <span class="btrack"><span class="bfill firstrep" data-target="63.71"></span></span>
+            <span class="bnum">63.71</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Random</span>
+            <span class="btrack"><span class="bfill random" data-target="63.86"></span></span>
+            <span class="bnum">63.86</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Zero</span>
+            <span class="btrack"><span class="bfill zero" data-target="63.43"></span></span>
+            <span class="bnum">63.43</span>
+          </div>
+        </div>
+        <div class="verdict">
+          <em>All replacements ≈ identity.</em> Diversity unused.
+        </div>
+      </div>
+
+      <!-- =========== CoVT =========== -->
+      <div class="mcard" id="mcard-covt">
+        <div class="mname">CoVT</div>
+        <div class="meta-row">
+          <div class="meta-line"><span class="lbl">Backbone</span><span class="val">LLaVA-13B</span></div>
+          <div class="meta-line"><span class="lbl">Training</span><span class="val">4-stage distillation curriculum</span></div>
+          <div class="meta-line"><span class="lbl">Eval</span><span class="val">CV-Bench-2D (overall)</span></div>
+        </div>
+        <div class="mchart">
+          <div class="barline">
+            <span class="blab">Identity</span>
+            <span class="btrack"><span class="bfill identity" data-target="76.26"></span></span>
+            <span class="bnum">76.26</span>
+          </div>
+          <div class="barline">
+            <span class="blab">1st-repeat</span>
+            <span class="btrack"><span class="bfill firstrep" data-target="76.26"></span></span>
+            <span class="bnum">76.26</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Random</span>
+            <span class="btrack"><span class="bfill random" data-target="21.39"></span></span>
+            <span class="bnum">21.39</span>
+          </div>
+          <div class="barline">
+            <span class="blab">Zero</span>
+            <span class="btrack"><span class="bfill zero" data-target="58.97"></span></span>
+            <span class="bnum">58.97</span>
+          </div>
+        </div>
+        <div class="verdict">
+          <em>Random collapses.</em> Matched-dist recovers.
+        </div>
+      </div>
+    </div>
 
     <div class="closing" id="act4-closing">
-      <em>First-repeat</em> ≈ identity throughout — token <em>diversity</em> rarely drives the gains.
+      <em>Content of visual tokens matters less than their presence in many settings.</em>
     </div>
   </div>
 
@@ -914,24 +1040,35 @@ function setT(t) {
   document.getElementById("annot-disc").style.opacity   = fadeWindow(t, 21500, 700, 29500, 0);
   document.getElementById("act3-caveat").style.opacity  = fadeWindow(t, 23500, 700, 29500, 0);
 
-  // ===== ACT 4 (30000–42000ms, 12s): rows 600ms apart, ~6.5s hold after closing line =====
+  // ===== ACT 4 (30000–42000ms, 12s): warning banner, then cards stagger in,
+  //        bars fill, closing line ~7s hold =====
   document.getElementById("act4").style.opacity = fadeWindow(t, 30000, 500, 41500, 500);
 
-  const rowEntry = {
-    "row-id":      30600,
-    "row-1st":     31200,
-    "row-rand":    31800,
-    "row-zero":    32400,
+  // Warning banner fades in first.
+  document.getElementById("act4-warn").style.opacity = fadeWindow(t, 30500, 500, 41500, 0);
+
+  // Three method cards: 800ms apart, bar fills animate over 700ms after card entry.
+  const cardEntry = {
+    "mcard-mirage": 31200,
+    "mcard-mull":   32000,
+    "mcard-covt":   32800,
   };
-  for (const rid of Object.keys(rowEntry)) {
-    const row = document.getElementById(rid);
-    const tEntry = rowEntry[rid];
+  for (const cid of Object.keys(cardEntry)) {
+    const card = document.getElementById(cid);
+    const tEntry = cardEntry[cid];
     const p = smoothstep(clamp01((t - tEntry) / 500));
-    row.style.opacity = p;
-    row.style.transform = `translateY(${(1 - p) * 6}px)`;
+    card.style.opacity = p;
+    card.style.transform = `translateY(${(1 - p) * 6}px)`;
+
+    // Bar fills: start 300ms after card begins entering, complete over 700ms.
+    const fillP = smoothstep(clamp01((t - tEntry - 300) / 700));
+    card.querySelectorAll(".bfill").forEach(b => {
+      const target = parseFloat(b.dataset.target) || 0;
+      b.style.width = (target * fillP) + "%";
+    });
   }
 
-  document.getElementById("act4-closing").style.opacity = fadeWindow(t, 34500, 700, 41500, 0);
+  document.getElementById("act4-closing").style.opacity = fadeWindow(t, 35500, 700, 41500, 0);
 
   // ===== ACT 5 (42000–46000ms, 4s): 0.5s fade in, 3s hold, 0.4s fade out =====
   document.getElementById("act5").style.opacity = fadeWindow(t, 42000, 500, 45500, 400);
