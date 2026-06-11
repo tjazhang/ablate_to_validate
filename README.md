@@ -56,6 +56,23 @@ Maintenance notes such as `UPSTREAM_DIFF.md`, `REMOVE_CANDIDATES.md`, and `POLIS
 | Mull | overlay | `mull` | `./tools/bootstrap_overlay.py mull` | `./tools/eval_mull.sh` | [`overlays/mull/USER_GUIDE.md`](overlays/mull/USER_GUIDE.md) |
 | CoVT | overlay | `covt` | `./tools/bootstrap_overlay.py covt` | `./tools/eval_covt.sh` | [`overlays/covt/USER_GUIDE.md`](overlays/covt/USER_GUIDE.md) |
 
+## Datasets
+
+The training bundle and the HardBLINK evaluation bundle are released publicly on the Hugging Face Hub:
+
+| Dataset | Role | Hugging Face | Contents |
+| --- | --- | --- | --- |
+| `agianbig/mixed_depth` | Training | [datasets/agianbig/mixed_depth](https://huggingface.co/datasets/agianbig/mixed_depth) | ADE20K relative-depth QA: `mixed_depth_long.json` / `mixed_depth_short.json` + ~9.9k images |
+| `agianbig/hardblink_eval` | Evaluation | [datasets/agianbig/hardblink_eval](https://huggingface.co/datasets/agianbig/hardblink_eval) | HardBLINK 3/4/5-point relative-depth questions (`blink_*_questions_long.jsonl`) + images |
+
+Download (target paths follow the per-method user guides):
+
+```bash
+pip install "huggingface_hub[cli]"
+hf download agianbig/mixed_depth   --repo-type dataset --local-dir methods/llava/data/ADE20K/mixed_depth
+hf download agianbig/hardblink_eval --repo-type dataset --local-dir methods/llava/data/evals/hardblink
+```
+
 ## First-Time Setup
 
 From the repo root:

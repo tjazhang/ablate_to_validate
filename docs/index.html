@@ -418,6 +418,7 @@
         <a class="button" href="https://arxiv.org/abs/2605.21642">arXiv</a>
         <a class="button" href="assets/atv_paper.pdf">Paper PDF</a>
         <a class="button secondary" href="https://github.com/tjazhang/ablate_to_validate">Code</a>
+        <a class="button secondary" href="#datasets">🤗 Datasets</a>
       </div>
     </header>
 
@@ -538,6 +539,38 @@
 
           </article>
         </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="data-title" id="datasets">
+      <h2 id="data-title">Datasets</h2>
+
+      <p class="abstract" style="text-align: center; margin-bottom: 18px;">
+        The training and evaluation data are released publicly on the Hugging Face Hub.
+      </p>
+
+      <div class="results-grid">
+        <article class="result-card">
+          <h3>Training &mdash; relative-depth QA</h3>
+          <p>
+            ADE20K relative-depth question&ndash;answer pairs used to train the LLaVA
+            and Qwen2.5-VL depth checkpoints.
+          </p>
+          <span class="metric">
+            <a href="https://huggingface.co/datasets/agianbig/mixed_depth">🤗 agianbig/mixed_depth</a>
+          </span>
+        </article>
+
+        <article class="result-card">
+          <h3>Evaluation &mdash; HardBLINK</h3>
+          <p>
+            HardBLINK 3/4/5-point relative-depth questions and images used for the
+            Token Replacement Test evaluations.
+          </p>
+          <span class="metric">
+            <a href="https://huggingface.co/datasets/agianbig/hardblink_eval">🤗 agianbig/hardblink_eval</a>
+          </span>
+        </article>
       </div>
     </section>
 
