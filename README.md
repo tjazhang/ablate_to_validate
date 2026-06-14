@@ -40,9 +40,9 @@ This repository has five runnable surfaces:
 
 If you are new here, use the docs in this order:
 
-1. [`docs/ENV_SETUP.md`](docs/ENV_SETUP.md)
+1. [`repo_docs/ENV_SETUP.md`](repo_docs/ENV_SETUP.md)
 2. The guide for the method you want to run
-3. [`docs/structure.md`](docs/structure.md) if you need repo internals
+3. [`repo_docs/structure.md`](repo_docs/structure.md) if you need repo internals
 
 Maintenance notes such as `UPSTREAM_DIFF.md`, `REMOVE_CANDIDATES.md`, and `POLISHED_*.md` are not the primary runbooks.
 
@@ -106,6 +106,6 @@ Then activate the matching env and follow that method's guide.
 
 ## Additional Docs
 
-- [`docs/ENV_SETUP.md`](docs/ENV_SETUP.md): shared environment setup and recreation guide
-- [`docs/structure.md`](docs/structure.md): repo organization
+- [`repo_docs/ENV_SETUP.md`](repo_docs/ENV_SETUP.md): shared environment setup and recreation guide
+- [`repo_docs/structure.md`](repo_docs/structure.md): repo organization
 - [`third_party/THIRD_PARTY_NOTICES.md`](third_party/THIRD_PARTY_NOTICES.md): upstream provenance and notices

@@ -1,5 +1,16 @@
 # pylint: disable=all
-"""Eval script for Video-R1 with Latent Token Ablation Support."""
+"""Eval script for Video-R1 with Latent Token Ablation Support (vLLM backend).
+
+WARNING -- KNOWN NO-OP ABLATION. This vLLM path does NOT faithfully apply the
+latent-token replacements. The ablation flags (e.g. --use-zero-latent) are set on
+the checkpoint config, but vLLM dispatches to its built-in stock Qwen2.5-VL forward
+and never reads them, so every "ablation" produces baseline-identical outputs
+(Delta ~ 0). Do NOT use this path to measure latent-token utilization.
+
+Use the faithful HF/transformers path instead:
+    ./tools/eval_mull.sh   ->   src/eval_bench_ablation_novllm.py
+which loads the custom Mull model class that honors the ablation flags.
+"""
 from collections import defaultdict
 import argparse
 import importlib
@@ -38,6 +49,16 @@ except ImportError:
 
 
 def main():
+  print(
+      "\n" + "=" * 80 +
+      "\n[WARNING] vLLM ablation path: latent-token ablations are a NO-OP here."
+      "\n          vLLM ignores the custom use_zero_latent / replacement flags and"
+      "\n          runs stock Qwen2.5-VL, so ablated outputs == baseline (Delta ~ 0)."
+      "\n          For a FAITHFUL ablation use:  ./tools/eval_mull.sh"
+      "\n          (src/eval_bench_ablation_novllm.py, HF transformers backend)."
+      "\n" + "=" * 80 + "\n",
+      file=sys.stderr, flush=True,
+  )
   BSZ = 1  # batch size (reduced from 64 to avoid OOM)
   NUM_LATENTS = 20  # Number of latent tokens to use (as per README)
   VSI_MCA_QUESTION_TYPES = {

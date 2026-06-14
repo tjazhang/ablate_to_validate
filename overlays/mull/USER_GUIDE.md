@@ -41,7 +41,7 @@ That launches:
 external/mull/upstream/src/eval_bench_ablation_novllm.sh
 ```
 
-The default path is the no-vLLM ablation runner because it is the most self-contained overlay path.
+The default path is the no-vLLM ablation runner because it is the most self-contained overlay path **and the only faithful one**. The vLLM ablation path (`eval_bench_ablation.py`) is a known no-op: vLLM ignores the custom latent-replacement flags and runs stock Qwen2.5-VL, so ablated outputs equal baseline (Δ≈0). Always use `./tools/eval_mull.sh` to measure latent-token utilization.
 
 ## Supported Ablations
 
@@ -108,7 +108,9 @@ python3 external/mull/upstream/src/summarize_eval_ablation_results.py
 ## Key Overlay Files
 
 - `README.md`: technical overview of Aurora-specific changes
-- `overrides/src/eval_bench_ablation.py`: vLLM ablation path
-- `overrides/src/eval_bench_ablation_novllm.py`: default no-vLLM ablation path
+- `overrides/src/eval_bench_ablation.py`: vLLM ablation path — **NOT faithful (no-op);** vLLM ignores the ablation flags. Use the no-vLLM path for real ablations.
+- `overrides/src/eval_bench_ablation_novllm.py`: default no-vLLM ablation path (faithful)
 - `overrides/src/aurora_eval_config.py`: dataset-path resolution
 - `overrides/src/summarize_eval_ablation_results.py`: result summary
+- `overrides/models/mmlatent_qwen_vl_sample_imonly.py`: custom Mull model class for the no-vLLM path
+- `overrides/dataloaders/custom_datasets.py`: `EvalDataset` for the no-vLLM path

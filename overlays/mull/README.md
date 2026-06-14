@@ -13,10 +13,22 @@ Aurora-specific changes in this overlay are limited to evaluation, not training.
 
 - `overrides/src/eval_bench_ablation.py`
   - vLLM-based latent ablation eval entrypoint
+  - **WARNING: known no-op ablation.** vLLM ignores the custom `use_zero_latent` /
+    replacement flags and runs stock Qwen2.5-VL, so ablated outputs are identical to
+    baseline (Δ≈0). Do not use this path to measure latent-token utilization — use the
+    no-vLLM path below.
   - adds Aurora comments around the `text_config=None` vLLM config workaround
 - `overrides/src/eval_bench_ablation_novllm.py`
   - canonical no-vLLM eval path used by `tools/eval_mull.sh`
   - loads the custom Mull model class for ablation support
+- `overrides/models/mmlatent_qwen_vl_sample_imonly.py`
+  - the custom Mull model class imported by the no-vLLM path
+    (`from mmlatent_qwen_vl_sample_imonly import ...`). Not present in upstream, so it is
+    vendored here and bootstrapped into `external/mull/upstream/models/`.
+- `overrides/dataloaders/custom_datasets.py`
+  - provides `EvalDataset`, loaded by the no-vLLM path via
+    `sys.path.append("dataloaders/")`. Not present in upstream, so it is vendored here and
+    bootstrapped into `external/mull/upstream/dataloaders/`.
 - `overrides/src/aurora_eval_config.py`
   - Aurora-only helper that replaces hard-coded machine-local dataset mounts with CLI/env configuration
 - `overrides/src/summarize_eval_ablation_results.py`
@@ -30,7 +42,9 @@ Aurora-specific changes in this overlay are limited to evaluation, not training.
 - `./tools/eval_mull.sh`
   - boots into `external/mull/upstream/src/eval_bench_ablation_novllm.sh`
 - `external/mull/upstream/src/eval_bench_ablation.sh`
-  - optional vLLM path if you specifically want the vLLM-backed ablation run
+  - vLLM path — **NOT a faithful ablation.** vLLM ignores the latent-replacement flags,
+    so ablated outputs == baseline (Δ≈0). Kept only for plain (non-ablation) vLLM
+    inference; for the faithful ablation always use `./tools/eval_mull.sh`.
 
 ## Supported ablation modes
 

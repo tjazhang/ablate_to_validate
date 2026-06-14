@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Ablation evaluation script for Video-R1 latent tokens
+# Ablation evaluation script for Video-R1 latent tokens (vLLM backend).
 # Run from the mull root directory: bash src/eval_bench_ablation.sh
+#
+# WARNING: vLLM ablation path = KNOWN NO-OP. vLLM ignores the custom
+# use_zero_latent / latent-replacement flags and runs stock Qwen2.5-VL, so every
+# "ablation" mode below produces baseline-identical results (Delta ~ 0), and the
+# accuracy comparison printed at the end is meaningless for measuring latent-token
+# utilization. For a FAITHFUL ablation use:  ./tools/eval_mull.sh
+# (src/eval_bench_ablation_novllm.py, HF transformers backend).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -219,6 +226,9 @@ echo "=========================================="
 echo "Results saved to: ./src/r1-v/eval_results/"
 echo "Logs saved to: ./logs/ablation/"
 echo ""
+echo "WARNING: this is the vLLM NO-OP path -- all modes below equal baseline"
+echo "         (Delta ~ 0). The comparison is NOT a valid ablation. Use the"
+echo "         faithful path instead:  ./tools/eval_mull.sh"
 echo "To analyze results, check the JSON files in eval_results/"
 echo "Compare accuracy across different ablation modes:"
 echo "  - baseline: Normal latent tokens"
