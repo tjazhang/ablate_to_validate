@@ -1,11 +1,12 @@
 external/*
 !external/.gitkeep
 
-# Local-only working files (editorial drafts, cross-artifact notes,
-# scratchpads, Twitter copy, etc.). Everything under local/ stays on
-# disk but never reaches the public remote. Drop new local files here
-# instead of adding per-file gitignore rules.
-local/
+# Dissemination materials (10-min talk, poster, cross-artifact map).
+# Ignored here but BACKED UP in the private repo tjazhang/aurora2 under
+# the same folder name (atv-dissemination/). Sync is manual and two-way:
+# hash-compare per file before overwriting either side. See the folder's
+# README.md for details.
+atv-dissemination/
 
 __pycache__/
 *.pyc
