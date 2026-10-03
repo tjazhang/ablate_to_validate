@@ -14,6 +14,10 @@ MODEL_PATH="${MODEL_PATH:?Set MODEL_PATH to a checkpoint directory or Hugging Fa
 HARDBLINK_ROOT="${HARDBLINK_ROOT:?Set HARDBLINK_ROOT to a dataset root containing questions/, images/, and answers/.}"
 
 QUESTION_FORMAT="${QUESTION_FORMAT:-long}"
+# DEPTH_MODES: comma-separated, from original,gt_depth,random,zero,model,first_repeat,random_depth_gt_dist.
+# This script forwards no other flags; the slot-shuffle arms, --discrete-span-length, --gt-depth-codebook,
+# --gt-depth-map-dir, --gt-depth-encoder and the KV-cache-off flags need a direct model_vqa_qwen.py call
+# (see methods/qwen/USER_GUIDE.md).
 DEPTH_MODES="${DEPTH_MODES:-original}"
 DTYPE="${DTYPE:-auto}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-2048}"

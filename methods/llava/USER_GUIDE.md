@@ -106,6 +106,14 @@ Useful ablations:
 - `--use-model-depth`
 - `--use-first-depth-repeat`
 - `--use-random-depth-gt-dist`
+- `--use-gt-depth-permuted` (slot shuffle: the oracle span with its slots reordered by one fixed permutation, recorded in `_permutation.json` beside the answers)
+
+The oracle-based arms (`--use-gt-depth-embeddings`, `--use-gt-depth-permuted`, `--use-random-depth-gt-dist`) encode a depth map per image with the checkpoint's depth encoder:
+
+- `--gt-depth-map-dir DIR` encodes `DIR/<image base name>_depth.png`, the operand of the paper's oracle. Without it the driver encodes the RGB image and prints a warning; that operand is not the paper's.
+- For a checkpoint whose name carries `_interploate_K`, pass `--gt-depth-target-num-patches K` (64 for the paper's SigLIP2 cell); the driver stops otherwise.
+
+In the paper every depth map, training target and oracle alike, is a Depth Anything (ViT-S) estimate; reading the maps at the marked points reproduces 362 of the 372 HardBLINK answer labels.
 
 ### 4. Batch eval for Aurora discrete-depth checkpoints
 
@@ -129,6 +137,10 @@ python -m llava.eval.model_vqa_depth_discrete \
   --use-gt-depth-embeddings \
   --gt-depth-codebook /path/to/codebook.npy
 ```
+
+Add `--use-gt-depth-permuted-discrete` to that command for the slot shuffle: the same GT codes, with the slots of the 10x10 code grid reordered by one fixed permutation.
+
+If the checkpoint's `config.json` has no depth fields, the depth token ids load as 0 and no forced span can engage. The driver then stops for `--use-gt-depth-embeddings`, `--use-gt-depth-permuted-discrete`, `--use-random-depth` and `--use-zero-depth`; add `--resync-discrete-depth-ids` to rebuild the ids from the tokenizer.
 
 ## Training
 
@@ -185,6 +197,32 @@ python -m llava.train.train \
 ```
 
 For the full recipe and tuning knobs, see `docs/two_stage_depth_training.md`.
+
+### Settings of the paper's models
+
+The paper reports these settings for its LLaVA-13B depth models, each trained for 10 epochs:
+
+| Setting | Continuous (SigLIP2, K=64) | Discrete (K=100) |
+| --- | --- | --- |
+| Trained parameters | LoRA on the LLM (r=128, α=256); vision tower frozen | LoRA on the LLM; vision tower frozen |
+| Learning rates | base/LoRA 2e-4, multimodal projector 2e-5 | depth projector/head 1e-5 |
+| Depth loss | cosine, normalization enabled, λ_depth = 1.0 | λ_depth = 1.0 |
+| Batch | 16 per device on 8 GPUs (effective 128) | effective 128 |
+| Other | max length 2048, AdamW, cosine schedule, BF16 + TF32, weight decay 0 | max length 2048, AdamW, cosine schedule, BF16 + TF32 |
+
+Several `llava.train.train` defaults differ (for example `--depth_coef 0.1`, `--lora_r 64`, `--lora_alpha 16`), so pass these values explicitly.
+
+## Reproducing the Paper's TRT Numbers
+
+No trained checkpoints are released, so every arm needs a model trained with this repository. Some arms also need inputs that are not in the public datasets:
+
+| Paper arm (HardBLINK) | Driver flags | Extra input | Status |
+| --- | --- | --- | --- |
+| Continuous identity, random, zero, first-repeat | none, `--use-random-depth`, `--use-zero-depth`, `--use-first-depth-repeat` | none | runnable |
+| Continuous oracle, slot shuffle | `--use-gt-depth-embeddings` or `--use-gt-depth-permuted`, with `--gt-depth-map-dir` | HardBLINK depth maps | not reproducible from public artifacts yet |
+| Discrete identity, random, zero | none, `--use-random-depth`, `--use-zero-depth` | none | runnable |
+| Discrete oracle, slot shuffle | `--use-gt-depth-embeddings` (plus `--use-gt-depth-permuted-discrete`), with `--gt-depth-codebook` | HardBLINK VQ-VAE code file | not reproducible from public artifacts yet |
+| Matched-budget control (appendix) | not in this release | VQ-VAE weights | not reproducible from public artifacts yet |
 
 ## Notes
 
