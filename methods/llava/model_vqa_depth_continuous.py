@@ -23,6 +23,8 @@ from llava.conversation import conv_templates, SeparatorStyle
 from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
+# Slot-permutation helpers for the slot-shuffle arm (same module as the Qwen driver's).
+from llava import gt_spatial as _gts
 
 DEFAULT_METHOD_ROOT = Path(__file__).resolve().parent
 DEFAULT_ENCODER_CONFIG_PATH = DEFAULT_METHOD_ROOT / "data" / "encoder_config.json"
@@ -267,6 +269,7 @@ class GroundTruthDepthProvider:
         interp_mode: str = "auto",
         target_num_patches: Optional[int] = None,
         encoder_device: Optional[str] = None,
+        depth_map_dir: Optional[str] = None,
     ):
         self.encoder_id = encoder_id
         self.encoder_config_path = encoder_config_path
@@ -284,7 +287,11 @@ class GroundTruthDepthProvider:
         self.encoder_conf = models[enc_key]
         self.processor, self.encoder_model = get_model_and_processor(enc_key, self.encoder_conf, self.encoder_device)
         self.cache: Dict[Tuple[str, int], torch.Tensor] = {}
+        self.depth_map_dir = depth_map_dir
+        self._warned_rgb_fallback = False
         print(f"[INFO] GroundTruthDepthProvider initialized with encoder {enc_key} on {self.encoder_device}")
+        if self.depth_map_dir is not None:
+            print(f"[INFO]   depth_map_dir = {self.depth_map_dir}")
 
     def get_embeddings(self, image_path: str, fallback_tokens: int) -> torch.Tensor:
         target_len = self.target_num_patches or fallback_tokens
@@ -293,8 +300,26 @@ class GroundTruthDepthProvider:
         cache_key = (image_path, target_len)
         if cache_key in self.cache:
             return self.cache[cache_key]
+        # Which image to encode: the depth map (what training encoded, see
+        # data/preprocessing.py) when --gt-depth-map-dir is set, else the RGB image.
+        if self.depth_map_dir is not None:
+            base = os.path.splitext(os.path.basename(image_path))[0]
+            encode_path = os.path.join(self.depth_map_dir, f"{base}_depth.png")
+            if not os.path.exists(encode_path):
+                raise FileNotFoundError(
+                    f"Depth map not found: {encode_path}. --gt-depth-map-dir must contain "
+                    f"'<base>_depth.png' files (the layout data/preprocessing.py reads).")
+        else:
+            if not self._warned_rgb_fallback:
+                print(
+                    "[WARNING] GroundTruthDepthProvider has no depth_map_dir set; encoding the RGB image. "
+                    "Training encoded depth-map PNGs (see data/preprocessing.py), so this operand differs "
+                    "from the paper's oracle. Pass --gt-depth-map-dir to encode the depth maps."
+                )
+                self._warned_rgb_fallback = True
+            encode_path = image_path
         tokens = extract_patch_tokens(
-            image_path,
+            encode_path,
             self.processor,
             self.encoder_model,
             self.encoder_conf,
@@ -388,6 +413,36 @@ class DiscreteGroundTruthDepthProvider:
         self.cache[cache_key] = token_ids
         return token_ids
 
+def interploate_k_in_path(model_path: str) -> Optional[int]:
+    """The `_interploate_K` slot budget a run name carries, or None.
+
+    `get_encoder_grid_size` cannot see it: `find_encoder_key_in_config` strips
+    `-interploate-N` to match the encoder config, so every `..._interploate_K` run
+    resolves to the encoder's native grid instead. The last match wins: the suffix
+    sits on the run root, and the model path may be a `checkpoint-<step>` leaf under it.
+    """
+    hits = re.findall(r"[_-]interploate[_-](\d+)", model_path)
+    return int(hits[-1]) if hits else None
+
+
+def assert_gt_patch_count_is_stated(model_path: str, target_num_patches: Optional[int]) -> None:
+    """Refuse a GT-derived arm on an `_interploate_K` run that did not state K.
+
+    Deriving K from the path here would repeat the guess `get_encoder_grid_size` gets
+    wrong, so the caller has to pass it; the injected patch count is then on the record.
+    """
+    k = interploate_k_in_path(model_path)
+    if k is not None and not target_num_patches:
+        raise SystemExit(
+            f"FATAL: the run name carries '_interploate_{k}' but "
+            f"--gt-depth-target-num-patches was not passed. The GT operand would then "
+            f"be built at the encoder's native grid (grid_size**2; "
+            f"get_encoder_grid_size ignores the suffix) while the decode loop injects "
+            f"only the first K rows of it: the top of the image, not a downsample. "
+            f"Pass --gt-depth-target-num-patches {k}.\n"
+            f"       model path: {model_path}")
+
+
 def eval_model(args):
     # Model
     disable_torch_init()
@@ -465,10 +520,28 @@ def eval_model(args):
         args.use_model_depth,
         args.use_first_depth_repeat,
         args.use_random_depth_gt_dist,
+        args.use_gt_depth_permuted,
     ]
     if sum(ablation_flags) > 1:
-        print("[ERROR] Only one ablation mode can be active: --use-gt-depth-embeddings, --use-random-depth, --use-zero-depth, --use-model-depth, --use-first-depth-repeat, or --use-random-depth-gt-dist")
+        print("[ERROR] Only one ablation mode can be active: --use-gt-depth-embeddings, --use-random-depth, --use-zero-depth, --use-model-depth, --use-first-depth-repeat, --use-random-depth-gt-dist, or --use-gt-depth-permuted")
         return
+
+    # Slot-shuffle arm: the oracle arm's operand with the slot order changed. It needs
+    # the same GroundTruthDepthProvider and the same per-image embeddings; what differs
+    # is one fixed permutation applied to the [K, D] sequence before injection, built
+    # once below and recorded beside the answers.
+    gt_slot_permutation = None
+    gt_permutation_record = None
+    if args.use_gt_depth_permuted:
+        if use_discrete_depth_tokens:
+            raise SystemExit(
+                "FATAL: --use-gt-depth-permuted is a continuous-span arm (it reorders the "
+                "[K, D] embedding sequence the custom decode injects). This checkpoint is "
+                "discrete; use model_vqa_depth_discrete.py --use-gt-depth-permuted-discrete.")
+        if is_original_mode:
+            raise SystemExit(
+                "FATAL: --use-gt-depth-permuted was requested for an original-mode "
+                "checkpoint, which has no depth span to shuffle.")
 
     if is_original_mode and sum(ablation_flags) > 0:
         print("[WARNING] Depth ablation flags were provided for an original-mode checkpoint; they will be ignored.")
@@ -489,6 +562,8 @@ def eval_model(args):
             print("[WARNING] Could not infer encoder name from model path; disabling random-depth-gt-dist ablation.")
             args.use_random_depth_gt_dist = False
         else:
+            # The noise is sized from this provider's GT stats, so the patch count matters here too.
+            assert_gt_patch_count_is_stated(model_path, args.gt_depth_target_num_patches)
             target_len = args.gt_depth_target_num_patches or depth_token_target
             try:
                 gt_depth_provider = GroundTruthDepthProvider(
@@ -497,6 +572,7 @@ def eval_model(args):
                     interp_mode=args.gt_depth_interp_mode,
                     target_num_patches=target_len,
                     encoder_device=args.gt_depth_device,
+                    depth_map_dir=args.gt_depth_map_dir,
                 )
                 print(f"[INFO] GT depth provider initialized for random-depth-gt-dist mode.")
             except Exception as exc:
@@ -504,7 +580,9 @@ def eval_model(args):
                 gt_depth_provider = None
                 args.use_random_depth_gt_dist = False
 
-    if args.use_gt_depth_embeddings:
+    # The slot-shuffle arm builds the same provider as the oracle arm (same per-image
+    # embeddings, reordered), so it opens the same block.
+    if args.use_gt_depth_embeddings or args.use_gt_depth_permuted:
         if use_discrete_depth_tokens:
             # Initialize discrete GT depth provider
             codebook_path = args.gt_depth_codebook or DEFAULT_GT_DEPTH_CODEBOOK
@@ -534,6 +612,7 @@ def eval_model(args):
             if encoder_name is None:
                 print("[WARNING] Could not infer encoder name from model path; disabling GT depth ablation.")
             else:
+                assert_gt_patch_count_is_stated(model_path, args.gt_depth_target_num_patches)
                 target_len = args.gt_depth_target_num_patches or depth_token_target
                 try:
                     gt_depth_provider = GroundTruthDepthProvider(
@@ -542,6 +621,7 @@ def eval_model(args):
                         interp_mode=args.gt_depth_interp_mode,
                         target_num_patches=target_len,
                         encoder_device=args.gt_depth_device,
+                        depth_map_dir=args.gt_depth_map_dir,
                     )
                 except Exception as exc:
                     print(f"[WARNING] Failed to initialize GroundTruthDepthProvider: {exc}")
@@ -553,6 +633,64 @@ def eval_model(args):
     answers_file = os.path.expanduser(args.answers_file)
     
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
+
+    # The one slot permutation of the slot-shuffle arm: built after the provider is up
+    # and the span length is known, before the first row, from the fixed seed in
+    # gt_spatial.py; written to `_permutation.json` beside the answers and carried in
+    # every row's metadata. `build_slot_permutation` requires k == grid*grid, so a span
+    # that does not tile a square grid is refused.
+    if args.use_gt_depth_permuted:
+        if gt_depth_provider is None:
+            raise SystemExit(
+                "FATAL: --use-gt-depth-permuted needs the GT depth provider (the oracle "
+                "arm's operand) and it was not built. Without it the arm would be an "
+                "identity pass recorded as a shuffled one.")
+        _k = int(args.gt_depth_target_num_patches or depth_token_target)
+        _grid = int(round(_k ** 0.5))
+        if _grid * _grid != _k:
+            raise SystemExit(
+                f"FATAL: --use-gt-depth-permuted needs a square span: K={_k} does not "
+                f"tile a grid, so the Chebyshev acceptance criterion is undefined.")
+        _bar = int(round(_gts.PERM_MIN_MOVED / _gts.K_DEFAULT * _k))
+        gt_slot_permutation = _gts.build_slot_permutation(
+            k=_k, seed=_gts.PERM_SEED, grid=_grid,
+            min_moved=_bar, min_cheb=_gts.PERM_MIN_CHEBYSHEV)
+        _facts = _gts.permutation_facts(gt_slot_permutation, _grid)
+        gt_permutation_record = {
+            "mode": "gt_permuted",
+            "perm_seed": _gts.PERM_SEED,
+            "perm": list(gt_slot_permutation),
+            "perm_sha256": _gts.permutation_sha(gt_slot_permutation),
+            "grid": _grid,
+            "K": _k,
+            "builder": ("gt_spatial.build_slot_permutation"
+                        "(k=K, seed=perm_seed, grid=grid, min_moved=min_moved_cheb, "
+                        "min_cheb=min_chebyshev)"),
+            "properties": _facts,
+            "min_moved_cheb": _bar,
+            "min_chebyshev": _gts.PERM_MIN_CHEBYSHEV,
+            "operand": "continuous_depth_embeddings",
+        }
+        _pj = os.path.join(os.path.dirname(answers_file), "_permutation.json")
+        if os.path.exists(_pj):
+            # Chunked runs of one arm write into the same dir, so an existing file is
+            # compared rather than overwritten: one arm, one permutation.
+            _prev = json.load(open(_pj))
+            if (_prev.get("perm_sha256") != gt_permutation_record["perm_sha256"]
+                    or _prev.get("perm_seed") != gt_permutation_record["perm_seed"]):
+                raise SystemExit(
+                    f"FATAL: {_pj} already records permutation seed {_prev.get('perm_seed')}"
+                    f" / sha {_prev.get('perm_sha256')}, but this run would inject seed "
+                    f"{gt_permutation_record['perm_seed']} / sha "
+                    f"{gt_permutation_record['perm_sha256']}. One arm, one permutation.")
+        else:
+            with open(_pj, "w") as _fh:
+                json.dump(gt_permutation_record, _fh, indent=1)
+        print(f"[GT PERMUTED] {_grid}x{_grid} span, slot s <- GT[perm[s]]; seed "
+              f"{_gts.PERM_SEED}, sha {gt_permutation_record['perm_sha256'][:12]}, "
+              f"derangement, {_facts['n_moved_cheb_ge']}/{_k} slots moved >= "
+              f"{_gts.PERM_MIN_CHEBYSHEV} cells (bar {_bar}) -> {_pj}")
+
     ans_file = open(answers_file, "w")
     # for line in tqdm(questions):
     for line in tqdm(questions):
@@ -599,6 +737,9 @@ def eval_model(args):
                 if args.use_random_depth_gt_dist:
                     print(f"[RANDOM DEPTH GT DIST] GT distribution: mean={gt_depth_mean:.4f}, std={gt_depth_std:.4f}")
             except Exception as exc:
+                if args.gt_depth_map_dir:
+                    # A missing depth map would otherwise turn this row into an identity row.
+                    raise
                 print(f"[WARNING] Failed to fetch GT depth embeddings for {gt_image_path}: {exc}")
                 gt_depth_tensor = None
         
@@ -676,6 +817,9 @@ def eval_model(args):
                     end_depth_token_id=end_depth_token_id,
                     use_gt_depth_embeddings=bool(gt_depth_tensor is not None and not args.use_random_depth_gt_dist),
                     gt_depth_embeddings=gt_depth_tensor if not args.use_random_depth_gt_dist else None,
+                    # Pass the slot-shuffle flag and the one permutation of this arm
+                    use_gt_depth_permuted=args.use_gt_depth_permuted,
+                    gt_depth_permutation=gt_slot_permutation,
                     # Pass random depth flag
                     use_random_depth=args.use_random_depth,
                     # Pass zero depth flag
@@ -754,6 +898,14 @@ def eval_model(args):
                        "use_first_depth_repeat": args.use_first_depth_repeat,
                        "use_random_depth_gt_dist": args.use_random_depth_gt_dist,
                    }}
+        # Slot-shuffle provenance on the rows it produced (the full perm list is in
+        # `_permutation.json` beside these answers). Absent on every other arm.
+        if gt_permutation_record is not None:
+            ans_data["metadata"]["use_gt_depth_permuted"] = True
+            ans_data["metadata"]["gt_permutation"] = {
+                k: gt_permutation_record[k]
+                for k in ("mode", "perm_seed", "perm_sha256", "grid", "K",
+                          "min_moved_cheb", "min_chebyshev")}
         
         # Only add depth_embeddings_path if it's not None
         if depth_embeddings_path is not None:
@@ -792,6 +944,13 @@ if __name__ == "__main__":
                         help="Use the first model-predicted continuous depth vector and repeat it for all remaining depth positions (ablation mode).")
     parser.add_argument("--use-random-depth-gt-dist", action="store_true",
                         help="Use random depth embeddings whose mean/std are matched to the GT depth embedding distribution (ablation mode).")
+    parser.add_argument("--use-gt-depth-permuted", action="store_true",
+                        help="Slot shuffle: inject this image's GT depth embeddings, but slot s receives "
+                             "GT[perm[s]] for one fixed permutation shared by every row "
+                             f"(gt_spatial.build_slot_permutation, seed {_gts.PERM_SEED}, a derangement). "
+                             "Same vectors and per-slot norms as the oracle arm; only the spatial layout "
+                             "changes. Continuous depth tokens only; uses the same GT provider flags as "
+                             "--use-gt-depth-embeddings and writes _permutation.json beside the answers.")
     parser.add_argument("--gt-depth-interp-mode", type=str, default="auto", choices=["auto", "linear", "bilinear"],
                         help="Interpolation mode to resize GT embeddings to the target patch count.")
     parser.add_argument("--gt-depth-target-num-patches", type=int, default=None,
@@ -802,6 +961,10 @@ if __name__ == "__main__":
                         help="Device for the GT encoder model (e.g., cuda, cuda:1, cpu). Defaults to auto.")
     parser.add_argument("--gt-depth-codebook", type=str, default=None,
                         help="Path to discrete token codebook (.npy file). Required for GT discrete-depth injection unless GT_DEPTH_CODEBOOK is set.")
+    parser.add_argument("--gt-depth-map-dir", type=str, default=None,
+                        help="Directory of depth-map PNGs named '<base>_depth.png' (the maps data/preprocessing.py "
+                             "encodes for training). When set, the GT depth provider encodes these maps, as the "
+                             "paper's oracle does; when unset it encodes the RGB image (previous behaviour).")
     args = parser.parse_args()
 
     eval_model(args)
