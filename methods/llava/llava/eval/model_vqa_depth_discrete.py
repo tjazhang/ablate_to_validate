@@ -3,6 +3,7 @@
 # NEW: Aurora path: llava/eval/model_vqa_depth_discrete.py
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -21,6 +22,8 @@ from llava.conversation import conv_templates, SeparatorStyle
 from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
+# Slot-permutation helpers for the slot-shuffle arm (same module as the Qwen driver's).
+from llava import gt_spatial as _gts
 
 DEFAULT_GT_DEPTH_CODEBOOK = os.environ.get("GT_DEPTH_CODEBOOK")
 
@@ -40,7 +43,7 @@ class DiscreteGroundTruthDepthProvider:
         print(f"[GT DEPTH DISCRETE] Loaded codebook '{codebook_path}' with {len(self.codebook)} entries.")
 
     def _parse_token_sequence(self, token_string: str) -> List[int]:
-        matches = re.findall(r"<DEPTH_(\\d+)>", token_string)
+        matches = re.findall(r"<DEPTH_(\d+)>", token_string)
         return [int(m) for m in matches]
 
     def _image_key(self, image_filename: str) -> str:
@@ -107,8 +110,62 @@ def eval_model(args):
         raise ValueError("Cannot enable both --use-gt-depth-embeddings and --use-zero-depth simultaneously.")
     if args.use_random_depth and args.use_zero_depth:
         raise ValueError("Cannot enable both --use-random-depth and --use-zero-depth simultaneously.")
+    # Slot-shuffle arm: the oracle arm plus one flag. It needs the oracle's own operand
+    # (--use-gt-depth-embeddings + codebook) and reorders it.
+    if args.use_gt_depth_permuted_discrete and not args.use_gt_depth_embeddings:
+        raise ValueError(
+            "--use-gt-depth-permuted-discrete requires --use-gt-depth-embeddings: the shuffled "
+            "span is the oracle's GT code sequence reordered, so the oracle arguments plus this "
+            "flag are the only valid invocation.")
 
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
+
+    # --resync-discrete-depth-ids (opt-in). On checkpoints whose config.json carries no
+    # depth fields, builder.py resolves depth_start_id / depth_end_id /
+    # discrete_depth_token_ids before the depth tokens are added to the tokenizer, so every
+    # id is 0 (<unk>) and no forcing processor ever engages. This rebuilds them from the
+    # returned tokenizer in the training order (llava/train/train.py adds <DEPTH_START>,
+    # <DEPTH_END>, <DEPTH_0..N-1>) and writes them where the forcing path reads them
+    # (model.config) and to the matching runtime attributes.
+    if args.resync_discrete_depth_ids:
+        _n_levels = int(getattr(model.config, "num_discrete_depth_levels", None) or 128)
+        _embed_rows = int(model.get_input_embeddings().weight.shape[0])
+        _start = tokenizer.convert_tokens_to_ids("<DEPTH_START>")
+        _end = tokenizer.convert_tokens_to_ids("<DEPTH_END>")
+        _levels = [tokenizer.convert_tokens_to_ids(f"<DEPTH_{i}>") for i in range(_n_levels)]
+        _all = [_start, _end] + _levels
+        _unk = tokenizer.unk_token_id
+        _base = int(tokenizer.vocab_size)   # base SentencePiece vocab, before added tokens
+        _problems = []
+        if any(not isinstance(t, int) for t in _all):
+            _problems.append("non-int id")
+        if len(set(_all)) != len(_all):
+            _problems.append(f"ids not distinct ({len(set(_all))} unique of {len(_all)})")
+        if any(t in (0, _unk) for t in _all):
+            _problems.append(f"an id is 0 or unk ({_unk})")
+        if any(not (_base <= t < _embed_rows) for t in _all):
+            _problems.append(f"an id is outside the added-token range [{_base}, {_embed_rows})")
+        if len(tokenizer) != _embed_rows:
+            _problems.append(f"len(tokenizer)={len(tokenizer)} != embedding rows {_embed_rows}")
+        if _problems:
+            raise SystemExit(f"FATAL --resync-discrete-depth-ids: {_problems}; start={_start} "
+                             f"end={_end} levels[:3]={_levels[:3]} levels[-1]={_levels[-1]}")
+        _before = (getattr(model.config, "depth_start_id", None), getattr(model.config, "depth_end_id", None),
+                   list(getattr(model.config, "discrete_depth_token_ids", None) or [])[:3])
+        model.config.depth_start_id = _start
+        model.config.depth_end_id = _end
+        model.config.discrete_depth_token_ids = list(_levels)
+        for _obj in (model, getattr(model, "get_model", lambda: None)()):
+            if _obj is None:
+                continue
+            for _attr, _val in (("depth_start_id", _start), ("depth_end_id", _end),
+                                ("discrete_depth_token_ids", list(_levels))):
+                if hasattr(_obj, _attr):
+                    setattr(_obj, _attr, _val)
+        print(f"[RESYNC DEPTH IDS] before (start, end, levels[:3]) = {_before}")
+        print(f"[RESYNC DEPTH IDS] after  start={_start} end={_end} levels[0..2]={_levels[:3]} "
+              f"levels[-1]={_levels[-1]} n_levels={_n_levels} embed_rows={_embed_rows} "
+              f"len(tokenizer)={len(tokenizer)} base_vocab={_base}")
 
     depth_mode = getattr(model.config, "depth_mode", None)
     if depth_mode not in {"original", "continuous", "discrete"}:
@@ -146,12 +203,97 @@ def eval_model(args):
                 print(f"[WARNING] Failed to initialize GT depth provider: {exc}")
                 discrete_gt_provider = None
 
+    # Hard stop: a forcing flag with unusable depth ids is a silent identity run (the
+    # processors wait for depth_start_id and force by id). Checked on model.config, the
+    # object the forcing path reads, after the original-mode reset above.
+    _forcing = [f for f in ("use_gt_depth_embeddings", "use_gt_depth_permuted_discrete",
+                            "use_random_depth", "use_zero_depth") if getattr(args, f, False)]
+    if _forcing:
+        _cs = getattr(model.config, "depth_start_id", None)
+        _ce = getattr(model.config, "depth_end_id", None)
+        _cl = list(getattr(model.config, "discrete_depth_token_ids", None) or [])
+        _ids = [_cs, _ce] + _cl
+        print(f"[DEPTH IDS] forcing flags {_forcing}: depth_start_id={_cs} depth_end_id={_ce} "
+              f"n_levels={len(_cl)} levels[:3]={_cl[:3]} levels[-1:]={_cl[-1:]}")
+        if (not _cl or any(not isinstance(t, int) or t == 0 for t in _ids)
+                or len(set(_ids)) != len(_ids)):
+            raise SystemExit(
+                f"FATAL: forcing flag(s) {_forcing} set but the depth ids are unusable "
+                f"(start={_cs}, end={_ce}, {len(_cl)} level ids, {len(set(_cl))} distinct, "
+                f"zeros={sum(1 for t in _ids if t == 0)}). No span would be forced. Pass "
+                "--resync-discrete-depth-ids if the checkpoint config lacks depth fields.")
+
     questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     
     answers_file = os.path.expanduser(args.answers_file)
     
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
+
+    # Slot-shuffle arm (discrete): the one fixed slot permutation over the 10x10 VQ-VAE
+    # code grid. Same helper, seed and acceptance bar as the Qwen driver's
+    # gt_permuted_discrete arm, and its sha is asserted equal to that arm's, so the two
+    # shuffled arms are one operator. Built once, written beside the answers, carried in
+    # every row.
+    discrete_perm = None
+    gt_permutation_record = None
+    tid2level = None
+    if args.use_gt_depth_permuted_discrete:
+        if discrete_gt_provider is None:
+            raise SystemExit(
+                "FATAL: --use-gt-depth-permuted-discrete needs the GT discrete provider (the "
+                "oracle arm's operand) and it was not built. Without it every row would be "
+                "an identity pass recorded as a shuffled one.")
+        _grid = 10                      # VQ-VAE 10x10 code grid
+        _k = _grid * _grid
+        _bar = int(round(_gts.PERM_MIN_MOVED / _gts.K_DEFAULT * _k))   # 94, as in the Qwen driver
+        discrete_perm = _gts.build_slot_permutation(
+            k=_k, seed=_gts.PERM_SEED, grid=_grid,
+            min_moved=_bar, min_cheb=_gts.PERM_MIN_CHEBYSHEV)
+        _facts = _gts.permutation_facts(discrete_perm, _grid)
+        _sha = _gts.permutation_sha(discrete_perm)
+        # The Qwen driver's gt_permuted_discrete arm builds this same permutation.
+        _expected_sha = "123a0b34303ebada3dd580795a3621b2a47d2d98c4313ae5761b8c889eab1b33"
+        if _sha != _expected_sha:
+            raise SystemExit(f"FATAL: discrete permutation sha {_sha} != the Qwen arm's "
+                             f"{_expected_sha}; the two shuffled arms would not be one operator.")
+        if not (_facts["is_permutation"] and _facts["is_derangement"]):
+            raise SystemExit(f"FATAL: discrete slot permutation is not a derangement: {_facts}")
+        gt_permutation_record = {
+            "mode": "gt_permuted_discrete",
+            "perm_seed": _gts.PERM_SEED,
+            "perm": list(discrete_perm),
+            "perm_sha256": _sha,
+            "grid": _grid,
+            "K": _k,
+            "builder": ("gt_spatial.build_slot_permutation"
+                        "(k=K, seed=perm_seed, grid=grid, min_moved=min_moved_cheb, "
+                        "min_cheb=min_chebyshev)"),
+            "properties": _facts,
+            "min_moved_cheb": _bar,
+            "min_chebyshev": _gts.PERM_MIN_CHEBYSHEV,
+            "operand": "vqvae_code_ids",
+            "codebook": discrete_gt_provider.codebook_path,
+        }
+        _pj = os.path.join(os.path.dirname(answers_file), "_permutation.json")
+        if os.path.exists(_pj):
+            # Chunked runs of one arm write into one dir: compare, never overwrite.
+            _prev = json.load(open(_pj))
+            if (_prev.get("perm_sha256") != _sha
+                    or _prev.get("perm_seed") != gt_permutation_record["perm_seed"]):
+                raise SystemExit(f"FATAL: {_pj} records sha {_prev.get('perm_sha256')}, this run "
+                                 f"would inject {_sha}. One arm, one permutation.")
+        else:
+            with open(_pj, "w") as _fh:
+                json.dump(gt_permutation_record, _fh, indent=1)
+        tid2level = {int(t): i for i, t in enumerate(discrete_gt_provider.discrete_depth_token_ids)}
+
+        def _codes_sha(levels):
+            return hashlib.sha256(",".join(str(int(x)) for x in levels).encode("utf-8")).hexdigest()
+        print(f"[GT PERMUTED DISCRETE] {_grid}x{_grid} code grid, slot s <- GT[perm[s]]; seed "
+              f"{_gts.PERM_SEED}, sha {_sha[:12]}, derangement, {_facts['n_moved_cheb_ge']}/{_k} "
+              f"slots moved >= {_gts.PERM_MIN_CHEBYSHEV} cells (bar {_bar}) -> {_pj}")
+
     ans_file = open(answers_file, "w")
     # for line in tqdm(questions):
     for line in tqdm(questions):
@@ -179,6 +321,7 @@ def eval_model(args):
         # Ensure tensors live on the same device as the model (supports multi-GPU via HF `device_map="auto"`).
         device = next(model.parameters()).device
         gt_discrete_tokens: Optional[List[int]] = None
+        row_perm_meta = None
         with torch.inference_mode():
             print(f"Generating for question: {qs[:10]}...")
             
@@ -198,6 +341,43 @@ def eval_model(args):
                 except Exception as exc:
                     print(f"[WARNING] Failed to fetch GT depth tokens for {image_file}: {exc}")
                     gt_discrete_tokens = None
+
+            # The shuffle. Outside the fetch's try/except on purpose: there a missing GT
+            # sequence degrades to a free span, which for this arm would be an identity row
+            # recorded as a shuffled one, so here it stops the run instead.
+            if discrete_perm is not None:
+                if not use_discrete_depth_tokens or not gt_discrete_tokens:
+                    raise RuntimeError(
+                        f"--use-gt-depth-permuted-discrete: no GT code sequence for {image_file} "
+                        f"(use_discrete_depth_tokens={use_discrete_depth_tokens}); refusing to "
+                        "record a free span as a shuffled row.")
+                if len(gt_discrete_tokens) != len(discrete_perm):
+                    raise RuntimeError(
+                        f"--use-gt-depth-permuted-discrete: {image_file} has "
+                        f"{len(gt_discrete_tokens)} GT codes but the permutation is over "
+                        f"{len(discrete_perm)} slots.")
+                _oracle_tokens = list(gt_discrete_tokens)
+                # slot s receives GT[perm[s]], on code ids.
+                gt_discrete_tokens = [_oracle_tokens[discrete_perm[s]]
+                                      for s in range(len(discrete_perm))]
+                _o_lv = [tid2level[t] for t in _oracle_tokens]
+                _f_lv = [tid2level[t] for t in gt_discrete_tokens]
+                _multiset_equal = sorted(_o_lv) == sorted(_f_lv)
+                if not _multiset_equal:
+                    raise RuntimeError(f"shuffled code multiset != oracle's for {image_file}")
+                row_perm_meta = {
+                    "oracle_codes_sha256": _codes_sha(_o_lv),
+                    "forced_codes_sha256": _codes_sha(_f_lv),
+                    "multiset_equal": _multiset_equal,
+                    "n_index_moved": sum(1 for s in range(len(discrete_perm)) if discrete_perm[s] != s),
+                    "n_code_changed": sum(1 for a, b in zip(_o_lv, _f_lv) if a != b),
+                    "forced_codes": _f_lv,
+                }
+                print(f"[GT PERMUTED DISCRETE] qid={idx} image={image_file} oracle_sha="
+                      f"{row_perm_meta['oracle_codes_sha256'][:12]} forced_sha="
+                      f"{row_perm_meta['forced_codes_sha256'][:12]} multiset_equal=True "
+                      f"index_moved={row_perm_meta['n_index_moved']}/{len(discrete_perm)} "
+                      f"code_changed={row_perm_meta['n_code_changed']}/{len(discrete_perm)}")
 
             if is_original_mode:
                 print("=== Generation for original mode (depth disabled) ===")
@@ -297,6 +477,16 @@ def eval_model(args):
             },
         }
         
+        # Slot-shuffle provenance, added only when the flag is active so answers produced
+        # without it keep their format (the full perm list is in `_permutation.json`).
+        if gt_permutation_record is not None:
+            ans_data["metadata"]["use_gt_depth_permuted_discrete"] = True
+            ans_data["metadata"]["gt_permutation"] = {
+                k: gt_permutation_record[k]
+                for k in ("mode", "perm_seed", "perm_sha256", "grid", "K",
+                          "min_moved_cheb", "min_chebyshev")}
+            ans_data["metadata"]["gt_forced"] = row_perm_meta
+
         # Only add depth_embeddings_path if it's not None
         if depth_embeddings_path is not None:
             ans_data["depth_embeddings_path"] = depth_embeddings_path
@@ -338,6 +528,23 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to the discrete depth token codebook (.npy).",
+    )
+    parser.add_argument(
+        "--use-gt-depth-permuted-discrete",
+        action="store_true",
+        help="Slot shuffle: force this image's GT code sequence (the --use-gt-depth-embeddings "
+        "operand, which it requires) with slot s <- GT[perm[s]] for one fixed derangement "
+        "(gt_spatial.build_slot_permutation, seed 20260902, 10x10 grid; the same permutation "
+        "as the Qwen gt_permuted_discrete arm). Same code multiset, same forcing path.",
+    )
+    parser.add_argument(
+        "--resync-discrete-depth-ids",
+        action="store_true",
+        help="After load, rebuild depth_start_id / depth_end_id / the level ids from the "
+        "returned tokenizer, assert they are distinct, non-zero, in the added-token range and "
+        "that len(tokenizer) == embedding rows, and write them to model.config and the runtime "
+        "attributes. Needed when the checkpoint config has no depth fields (the ids otherwise "
+        "load as 0).",
     )
     args = parser.parse_args()
 
