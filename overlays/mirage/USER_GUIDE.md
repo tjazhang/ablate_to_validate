@@ -13,7 +13,7 @@ This is the overlay that carries the extra Aurora depth-training workflow.
 
 ## Environment
 
-Use the `mirage` conda env for this overlay. The full setup flow is documented in `../../docs/ENV_SETUP.md`.
+Use the `mirage` conda env for this overlay. The full setup flow is documented in `../../repo_docs/ENV_SETUP.md`.
 
 ## First-Time Setup
 

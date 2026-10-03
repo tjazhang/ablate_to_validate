@@ -26,7 +26,7 @@ This guide covers the retained public Qwen surface in `methods/qwen`.
 
 ## Environment Setup
 
-Use the shared env guide in `../../docs/ENV_SETUP.md`. The recommended env for this method is `qwen_vl`.
+Use the shared env guide in `../../repo_docs/ENV_SETUP.md`. The recommended env for this method is `qwen_vl`.
 
 The checked-in env YAML is now a populated snapshot of the original `qwen_vl` env. The recommended path is:
 

@@ -26,6 +26,30 @@ Vision-language models (VLMs) are increasingly augmented with continuous or late
   <em>▶ <a href="docs/assets/atv_teaser.mp4">animated explainer</a> · <a href="https://tjazhang.github.io/ablate_to_validate/">project page</a> · <a href="assets/teaser_animation/">animation source</a></em>
 </p>
 
+## Updates (revised manuscript, Sept 2026)
+
+The project page and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
+
+| Result | arXiv v1 | Revised | Reason |
+| --- | --- | --- | --- |
+| LLaVA-13B No-aux | 76.68 | 75.54 | Retrained as the paper defines No-aux: trained to output only the final answer. |
+| LLaVA-13B discrete, identity | 77.69 | 77.96 | The scorer (`eval_answers.py`) accepts one additional answer phrasing. |
+| LLaVA-13B discrete, oracle | 78.76 | 81.45 | The v1 run never forced the oracle tokens (a token-matching bug in the discrete eval driver, fixed in this release). |
+| LLaVA-13B continuous TRT, random | 72.58 | 74.19 | The v1 value came from a different checkpoint; every row of the block now uses the λ_depth = 1.0 checkpoint. |
+| LLaVA-13B, CLIP, full span | 67.20 | 65.86 | The v1 cell held the Qwen2.5-VL value. |
+| LLaVA-13B base model | 32.00 | 33.60 | A sourced result replaces an unsourced value. |
+| Qwen2.5-VL-3B No-aux | 58.87 | 66.40 | Retrained with the depth models' recipe (10 epochs, learning rate 2e-4). |
+| Qwen2.5-VL-3B, DINOv2, K = 4 / 16 / 64 | 68.55 / 63.98 / 61.47 | 65.32 / 66.94 / 67.47 | Retrained on the current code; the v1 K = 4 value did not reproduce. |
+| Qwen2.5-VL-3B continuous (best) | 68.55 | 68.28 | With the DINOv2 row retrained, the best cell is CLIP, K = 16. |
+| Qwen2.5-VL-3B continuous TRT, identity → oracle | 68.55 → 67.74 (K = 4) | 67.47 → 68.82 (K = 64) | The TRT cell is now DINOv2, K = 64. |
+| Qwen2.5-VL-3B discrete TRT, random / zero | 51.34 / 58.87 | 45.43 / 59.14 | The eval driver forced 256 codes instead of the model's own span length; fixed in this release. |
+| Qwen2.5-VL-3B discrete TRT, oracle | 80.64 | 80.65 | Rounding. |
+| Mull-Tokens, BLINK: identity / first-repeat / random / zero | 63.71 / 63.71 / 63.86 / 63.43 | 63.43 / 63.43 / 63.00 / 63.43 | Re-measured on the no-vLLM driver, which applies the replacements (the vLLM path ignores them); greedy decoding, batch size 1 for every arm. |
+
+New in the revised manuscript: a slot-shuffle arm (the oracle span with its slots reordered by one fixed permutation), a matched-budget control (the same 100 VQ-VAE depth tokens read as codebook embeddings or as token IDs), KV-cache-off decoding, an attention-value (V-channel) ablation, and paired confidence intervals. Two continuous arms collapse decoding and are scored as wrong: LLaVA-13B zero (no answer after the span on 372/372 questions) and Qwen2.5-VL-3B first-repeat (343/372).
+
+Code in this release: the slot-shuffle arms, the discrete span-length fix, the LLaVA discrete token-id resync and the KV-cache-off flags (see the [LLaVA](methods/llava/USER_GUIDE.md) and [Qwen](methods/qwen/USER_GUIDE.md) guides), and batch-size control for the [Mull](overlays/mull/USER_GUIDE.md) driver. The V-channel ablation, the matched-budget control, the paired confidence intervals and the launch scripts follow in a later update.
+
 ---
 
 ## Repository

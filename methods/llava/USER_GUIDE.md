@@ -2,7 +2,7 @@
 
 This guide is the curated Aurora entry point for `methods/llava`.
 
-Use the shared env guide in [`../../docs/ENV_SETUP.md`](../../docs/ENV_SETUP.md). The recommended env for this method is `llava`.
+Use the shared env guide in [`../../repo_docs/ENV_SETUP.md`](../../repo_docs/ENV_SETUP.md). The recommended env for this method is `llava`.
 
 ## What Is Included
 
