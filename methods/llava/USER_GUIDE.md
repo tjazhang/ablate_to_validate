@@ -142,6 +142,8 @@ Add `--use-gt-depth-permuted-discrete` to that command for the slot shuffle: the
 
 If the checkpoint's `config.json` has no depth fields, the depth token ids load as 0 and no forced span can engage. The driver then stops for `--use-gt-depth-embeddings`, `--use-gt-depth-permuted-discrete`, `--use-random-depth` and `--use-zero-depth`; add `--resync-discrete-depth-ids` to rebuild the ids from the tokenizer.
 
+`--use-random-depth` and `--use-zero-depth` force `--discrete-span-length N` codes (100 for the paper's models), or each image's GT code count when `--gt-depth-codebook` is given; with neither, the driver stops. Each answer row records the arm and the forced length (`ablation_mode`, `discrete_span_length` under `metadata`).
+
 ## Training
 
 ### Standard LLaVA finetuning
@@ -220,7 +222,7 @@ No trained checkpoints are released, so every arm needs a model trained with thi
 | --- | --- | --- | --- |
 | Continuous identity, random, zero, first-repeat | none, `--use-random-depth`, `--use-zero-depth`, `--use-first-depth-repeat` | none | runnable |
 | Continuous oracle, slot shuffle | `--use-gt-depth-embeddings` or `--use-gt-depth-permuted`, with `--gt-depth-map-dir` | HardBLINK depth maps | not reproducible from public artifacts yet |
-| Discrete identity, random, zero | none, `--use-random-depth`, `--use-zero-depth` | none | runnable |
+| Discrete identity, random, zero | none; `--use-random-depth` or `--use-zero-depth` with `--discrete-span-length 100` | none | runnable |
 | Discrete oracle, slot shuffle | `--use-gt-depth-embeddings` (plus `--use-gt-depth-permuted-discrete`), with `--gt-depth-codebook` | HardBLINK VQ-VAE code file | not reproducible from public artifacts yet |
 | Matched-budget control (appendix) | not in this release | VQ-VAE weights | not reproducible from public artifacts yet |
 

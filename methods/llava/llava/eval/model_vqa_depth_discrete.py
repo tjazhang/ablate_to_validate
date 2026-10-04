@@ -117,6 +117,21 @@ def eval_model(args):
             "--use-gt-depth-permuted-discrete requires --use-gt-depth-embeddings: the shuffled "
             "span is the oracle's GT code sequence reordered, so the oracle arguments plus this "
             "flag are the only valid invocation.")
+    # Span length of the discrete random/zero arms: --discrete-span-length N, else this
+    # image's GT code count from the codebook (the sequence the oracle arm forces). Without
+    # either, the forcing processors in llava_llama.py would use the checkpoint's
+    # num_depth_tokens, which train.py sets from the depth encoder's patch grid (256 for the
+    # default encoder), not the span length identity emits. Checked before the model loads.
+    span_arm = "random" if args.use_random_depth else ("zero" if args.use_zero_depth else None)
+    span_codebook = args.gt_depth_codebook or DEFAULT_GT_DEPTH_CODEBOOK
+    if args.discrete_span_length is not None and args.discrete_span_length < 1:
+        raise SystemExit(f"FATAL: --discrete-span-length must be a positive number of codes, "
+                         f"got {args.discrete_span_length}.")
+    if span_arm and args.discrete_span_length is None and not span_codebook:
+        raise SystemExit(
+            f"FATAL: the discrete {span_arm} arm needs a span length. Pass "
+            "--discrete-span-length N (100 for the paper's models) or --gt-depth-codebook PATH "
+            "to force each image's GT code count.")
 
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
@@ -223,6 +238,28 @@ def eval_model(args):
                 f"zeros={sum(1 for t in _ids if t == 0)}). No span would be forced. Pass "
                 "--resync-discrete-depth-ids if the checkpoint config lacks depth fields.")
 
+    # The random/zero forcing processors read model.num_depth_tokens at generate time, so
+    # each row's span length is written there before its generate call (below).
+    forces_span = bool((args.use_random_depth or args.use_zero_depth)
+                       and getattr(model.config, "use_discrete_depth_tokens", False))
+    span_provider: Optional[DiscreteGroundTruthDepthProvider] = None
+    if forces_span and args.discrete_span_length is None:
+        try:
+            span_provider = DiscreteGroundTruthDepthProvider(
+                codebook_path=os.path.expanduser(span_codebook),
+                discrete_depth_token_ids=list(getattr(model.config, "discrete_depth_token_ids", None) or []),
+            )
+        except Exception as exc:
+            raise SystemExit(
+                f"FATAL: the discrete {span_arm} arm takes each image's span length from the GT "
+                f"codebook, which could not be loaded: {exc}. Pass --discrete-span-length N to "
+                "set it directly.") from exc
+    if forces_span:
+        print(f"[DISCRETE SPAN] {span_arm} arm forces "
+              + (f"{args.discrete_span_length} codes per row (--discrete-span-length)"
+                 if span_provider is None
+                 else f"each image's GT code count from {span_provider.codebook_path}"))
+
     questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     
@@ -322,6 +359,14 @@ def eval_model(args):
         device = next(model.parameters()).device
         gt_discrete_tokens: Optional[List[int]] = None
         row_perm_meta = None
+        # This row's span length for the random/zero arms. A codebook without this image
+        # raises here and stops the run rather than forcing a span of another length.
+        row_span = None
+        if forces_span:
+            row_span = (int(args.discrete_span_length) if span_provider is None
+                        else len(span_provider.get_token_ids(image_file)))
+            model.num_depth_tokens = row_span
+            print(f"[DISCRETE SPAN] qid={idx} {span_arm}: forcing {row_span} codes")
         with torch.inference_mode():
             print(f"Generating for question: {qs[:10]}...")
             
@@ -486,6 +531,10 @@ def eval_model(args):
                 for k in ("mode", "perm_seed", "perm_sha256", "grid", "K",
                           "min_moved_cheb", "min_chebyshev")}
             ans_data["metadata"]["gt_forced"] = row_perm_meta
+        # The arm and the span length it forced, on every row of the random/zero arms.
+        if row_span is not None:
+            ans_data["metadata"]["ablation_mode"] = span_arm
+            ans_data["metadata"]["discrete_span_length"] = row_span
 
         # Only add depth_embeddings_path if it's not None
         if depth_embeddings_path is not None:
@@ -536,6 +585,15 @@ if __name__ == "__main__":
         "operand, which it requires) with slot s <- GT[perm[s]] for one fixed derangement "
         "(gt_spatial.build_slot_permutation, seed 20260902, 10x10 grid; the same permutation "
         "as the Qwen gt_permuted_discrete arm). Same code multiset, same forcing path.",
+    )
+    parser.add_argument(
+        "--discrete-span-length",
+        type=int,
+        default=None,
+        help="Number of depth codes the random and zero arms force between <DEPTH_START> and "
+        "<DEPTH_END>. Defaults to this image's GT code count from --gt-depth-codebook, which "
+        "keeps those arms length-matched to identity and the oracle; with neither, the two arms "
+        "stop. Does not affect the other arms.",
     )
     parser.add_argument(
         "--resync-discrete-depth-ids",
