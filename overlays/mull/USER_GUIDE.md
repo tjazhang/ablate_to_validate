@@ -10,7 +10,7 @@ This overlay is eval-focused. It does not carry the extra Aurora depth-training 
 
 ## Environment
 
-Use the `mull` conda env for this overlay. The full setup flow is documented in `../../docs/ENV_SETUP.md`.
+Use the `mull` conda env for this overlay. The full setup flow is documented in `../../repo_docs/ENV_SETUP.md`.
 
 ## First-Time Setup
 
@@ -58,6 +58,32 @@ The no-vLLM Mull override supports:
 - `gt_latent`
 
 `random_latent_gt_dist` and `gt_latent` require GT auxiliary images through the wrapper's `GT_IMAGE_DIR` or the underlying `--gt-image-dir` flag.
+
+## Reproducing the Paper's Mull-Tokens Table
+
+The paper's Mull-Tokens rows (BLINK, 700 questions; SAT, 300 questions) map to these runs of the no-vLLM driver:
+
+| Paper row | Driver flag |
+| --- | --- |
+| Identity | none (`baseline`) |
+| First-repeat | `--use-first-latent-repeat` |
+| Random | `--use-random-latent` |
+| Random (second draw) | `--use-random-latent-same-dist` |
+| Zero | `--use-zero-latent` |
+
+Every arm uses greedy decoding (the driver's default for `blink` and `sat`) and `--batch-size 1`, so the identity and perturbed arms are batched alike. `./tools/eval_mull.sh` runs at the default batch size of 4, so call the driver directly, once per arm, from the materialized upstream repo:
+
+```bash
+cd external/mull/upstream
+python3 ./src/eval_bench_ablation_novllm.py \
+    --model_path array/Qwen2.5-VL-Mull \
+    --file_name trt_bsz1_Qwen2.5-VL-Mull \
+    --dataset_names blink \
+    --batch-size 1 \
+    --use-zero-latent        # the arm's flag from the table; omit for Identity
+```
+
+Use `--dataset_names sat` for SAT, and `array/Qwen2.5-VL-MullGRPO` with `--file_name trt_bsz1_Qwen2.5-VL-MullGRPO` for the GRPO checkpoint. The driver resumes from an existing output file of the same name (`src/r1-v/eval_results/eval_<dataset>_<file_name><arm suffix>_greedy_output.json`), so give each checkpoint its own `--file_name`, distinct from the wrapper's `video_r1_ablation_<model>`. `--max-samples N` caps each dataset at its first `N` questions for a quick smoke run.
 
 ## Dataset Configuration
 

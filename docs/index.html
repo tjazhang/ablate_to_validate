@@ -400,7 +400,7 @@
     <header class="hero">
       <h1>
         Ablate-to-Validate:<br>
-        Are Vision-Language Models Really Using Visual Reasoning Tokens?
+        Are Vision-Language Models Really Using Continuous Thought Tokens?
       </h1>
 
       <div class="authors">
@@ -576,28 +576,33 @@
 
     <section aria-labelledby="results-title">
       <h2 id="results-title">Key Results</h2>
+      <p style="color:#6b7280;font-size:0.88em;">
+        Numbers on this page follow the revised manuscript (Sept 2026); the Paper PDF button opens arXiv v1.
+        See the <a href="https://github.com/tjazhang/ablate_to_validate#updates-revised-manuscript-sept-2026">README updates</a> for what changed.
+      </p>
 
       <div class="results-grid">
         <article class="result-card">
           <h3>Continuous latent spans are weakly content-sensitive</h3>
           <p>
-            For continuous depth spans, random and first-repeat replacements produce
-            limited changes, while oracle depth tokens provide little or no headroom.
+            For the two K=64 continuous depth spans, random replacement and the slot
+            shuffle change accuracy little, and oracle depth tokens provide little or
+            no headroom. Zero (LLaVA) and first-repeat (Qwen) instead collapse decoding.
           </p>
 
           <span class="metric">LLaVA oracle: 74.46 → 74.73</span>
-          <span class="metric">Qwen oracle: 68.55 → 67.74</span>
+          <span class="metric">Qwen oracle: 67.47 → 68.82</span>
         </article>
 
         <article class="result-card">
           <h3>Discrete spans behave like bottlenecks</h3>
           <p>
             Discrete depth tokens show stronger causal dependence: oracle replacement
-            helps, while random and constant replacements degrade accuracy.
+            helps, while random, constant and slot-shuffled replacements degrade accuracy.
           </p>
 
-          <span class="metric">Qwen oracle: 71.24 → 80.64</span>
-          <span class="metric">Qwen random: 71.24 → 51.34</span>
+          <span class="metric">Qwen oracle: 71.24 → 80.65</span>
+          <span class="metric">Qwen random: 71.24 → 45.43</span>
         </article>
       </div>
 
@@ -607,8 +612,10 @@
             <th>Setting</th>
             <th>Identity</th>
             <th>Oracle</th>
+            <th>Slot shuffle</th>
             <th>Random</th>
-            <th>First-repeat / Constant</th>
+            <th>Zero / Constant</th>
+            <th>First-repeat</th>
           </tr>
         </thead>
 
@@ -617,35 +624,48 @@
             <td>LLaVA continuous <span style="color:#6b7280;font-size:0.88em;">(SigLIP2, K=64)</span></td>
             <td>74.46</td>
             <td>74.73</td>
-            <td>72.58</td>
+            <td>74.46</td>
+            <td>74.19</td>
+            <td>0.00<sup>&sect;</sup></td>
             <td>74.46</td>
           </tr>
 
           <tr>
-            <td>Qwen continuous <span style="color:#6b7280;font-size:0.88em;">(DINOv2, K=4)</span></td>
-            <td>68.55</td>
-            <td>67.74</td>
-            <td>67.20</td>
+            <td>Qwen continuous <span style="color:#6b7280;font-size:0.88em;">(DINOv2, K=64)</span></td>
+            <td>67.47</td>
+            <td>68.82</td>
+            <td>68.28</td>
+            <td>66.94</td>
             <td>68.01</td>
+            <td>4.30<sup>&sect;</sup></td>
           </tr>
 
           <tr>
             <td>LLaVA discrete</td>
-            <td>77.69</td>
-            <td>78.76</td>
+            <td>77.96</td>
+            <td>81.45</td>
+            <td>72.85</td>
             <td>68.82</td>
             <td>73.66</td>
+            <td>&mdash;</td>
           </tr>
 
           <tr>
             <td>Qwen discrete</td>
             <td>71.24</td>
-            <td>80.64</td>
-            <td>51.34</td>
-            <td>58.87</td>
+            <td>80.65</td>
+            <td>53.76</td>
+            <td>45.43</td>
+            <td>59.14</td>
+            <td>&mdash;</td>
           </tr>
         </tbody>
       </table>
+      <p style="color:#6b7280;font-size:0.88em;margin-top:8px;">
+        Slot shuffle: the oracle span with its slots reordered by one fixed permutation.
+        <sup>&sect;</sup>Decoding collapse: no answer after the span on 372/372 (LLaVA) and
+        343/372 (Qwen) questions, scored as wrong. &mdash;: not reported for the discrete models.
+      </p>
     </section>
 
     <section aria-labelledby="beyond-title">
@@ -696,14 +716,15 @@
             Eval: <strong>BLINK</strong> (mean acc)
           </p>
           <div class="metrics-row">
-            <span class="metric">Identity 63.71</span>
-            <span class="metric">1st-repeat 63.71</span>
-            <span class="metric">Random 63.86</span>
+            <span class="metric">Identity 63.43</span>
+            <span class="metric">1st-repeat 63.43</span>
+            <span class="metric">Random 63.00</span>
             <span class="metric">Zero 63.43</span>
           </div>
           <p class="verdict">
-            First-repeat matches baseline; random latents induce only small changes,
-            <em>consistent with token presence dominating diversity</em>.
+            The span is 20 copies of one pad embedding, so first-repeat equals identity
+            by construction; zero and random move accuracy by at most one point,
+            <em>so the gain does not run through span content</em>.
           </p>
         </article>
 
@@ -743,15 +764,15 @@
         <article class="pipeline-card">
           <h3>1. Corruption tolerated</h3>
           <p>
-            <code>zero</code> / <code>random</code> replacement preserves the gain.
-            Even corrupted content doesn't punish the model.
+            Distribution-matched or shuffled content preserves the gain.
+            Even such corrupted content doesn't punish the model.
           </p>
         </article>
 
         <article class="pipeline-card">
           <h3>2. Diversity unused</h3>
           <p>
-            <code>first-repeat</code> suffices. A single vector tiled <em>K</em>
+            <code>first-repeat</code> often suffices. A single vector tiled <em>K</em>
             times keeps performance up, so diversity isn't doing the work.
           </p>
         </article>
@@ -759,8 +780,8 @@
         <article class="pipeline-card">
           <h3>3. Content unused</h3>
           <p>
-            <code>oracle</code> (GT) injection adds no headroom. Even a perfect
-            signal isn't being read.
+            <code>oracle</code> (GT) injection adds no measurable headroom. Even a
+            strong signal isn't being read.
           </p>
         </article>
       </div>

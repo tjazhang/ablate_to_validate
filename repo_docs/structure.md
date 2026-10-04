@@ -3,7 +3,7 @@
 ## First-use docs
 
 - `README.md`
-- `docs/ENV_SETUP.md`
+- `repo_docs/ENV_SETUP.md`
 - `methods/llava/USER_GUIDE.md`
 - `methods/qwen/USER_GUIDE.md`
 - `overlays/mirage/USER_GUIDE.md`

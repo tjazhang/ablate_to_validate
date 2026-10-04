@@ -26,7 +26,7 @@ This guide covers the retained public Qwen surface in `methods/qwen`.
 
 ## Environment Setup
 
-Use the shared env guide in `../../docs/ENV_SETUP.md`. The recommended env for this method is `qwen_vl`.
+Use the shared env guide in `../../repo_docs/ENV_SETUP.md`. The recommended env for this method is `qwen_vl`.
 
 The checked-in env YAML is now a populated snapshot of the original `qwen_vl` env. The recommended path is:
 
@@ -140,6 +140,7 @@ Useful overrides:
 
 - `MODEL_NAME_OR_PATH`
 - `NUM_EPOCHS`
+- `LEARNING_RATE`
 - `PER_DEVICE_BATCH_SIZE`
 - `GRAD_ACCUM_STEPS`
 - `OUTPUT_ROOT`
@@ -184,6 +185,10 @@ bash methods/qwen/qwen-vl-finetune/scripts/train_ade_continuous_embed_ar.sh
 - `1.0`: full teacher forcing
 - `0.0`: pure embed-AR
 
+### Settings of the paper's models
+
+The paper's Qwen2.5-VL-3B models (No-aux, discrete, continuous) train for 10 epochs with the vision encoder frozen and the LLM, visual MLP and embeddings fine-tuned: AdamW with a cosine schedule, warmup ratio 0.03, BF16, effective batch size 128, max length 4096. The base learning rate is 2e-4 for the discrete and No-aux models and 5e-5 for the continuous models. The continuous models use an MSE depth loss with λ_depth = 1.0 and a linear, weight-tied depth head and projector. The defaults of `train_ade_baseline.sh` (No-aux), `train_ade_discrete.sh` and `train_ade_continuous.sh` match these settings on 8 GPUs.
+
 ## Evaluation
 
 Evaluate a checkpoint or model id with:
@@ -209,9 +214,55 @@ For discrete GT ablation, also pass a codebook path through the underlying model
 
 - `--gt-depth-codebook /path/to/codebook.npy`
 
+On discrete checkpoints the `gt_depth` mode needs `--gt-depth-codebook`, and the `random` and `zero` modes need either `--gt-depth-codebook` or `--discrete-span-length 100`. `eval_qwen.sh` does not forward extra flags, so run `model_vqa_qwen.py` directly for these (see below).
+
 The evaluation script writes predictions under:
 
 - `HARDBLINK_ROOT/answers_qwen/output/<model_name>...`
+
+### TRT Arms of the Paper
+
+These flags go to `model_vqa_qwen.py` directly:
+
+| Flag | Effect |
+| --- | --- |
+| `--use-gt-depth-permuted` | Continuous slot shuffle: the oracle span with its slots reordered by one fixed permutation, recorded in `_permutation.json` beside the answers |
+| `--use-gt-depth-permuted-discrete` | Discrete slot shuffle: the oracle's GT codes with the slots of the 10x10 code grid reordered by one fixed permutation; needs `--gt-depth-codebook` |
+| `--discrete-span-length N` | Number of codes the discrete random and zero arms force; by default this image's GT code count from `--gt-depth-codebook` (100 for the paper's models) |
+| `--gt-depth-map-dir DIR` | The continuous oracle-based arms encode `DIR/<image base name>_depth.png`, the operand of the paper's oracle, instead of the RGB image |
+| `--gt-depth-encoder NAME` | Depth encoder of the oracle-based arms; only SigLIP2 and CLIP are inferred from the checkpoint name, so DINOv2 checkpoints need `--gt-depth-encoder facebook/dinov2-base` |
+| `--disable-kv-cache` | Decode without the KV cache |
+| `--controlled-kv-off` | Continuous models: cached generation up to `<DEPTH_START>`, then recompute every step over the span and the answer (the paper's KV-cache appendix) |
+
+Example, the slot shuffle on the paper's continuous cell (DINOv2, K=64), one HardBLINK subset:
+
+```bash
+python methods/qwen/qwen-vl-finetune/model_vqa_qwen.py \
+  --model-path /path/to/dinov2_k64_checkpoint \
+  --question-file methods/llava/data/evals/hardblink/questions/blink_3pointscenter_questions_long.jsonl \
+  --image-folder methods/llava/data/evals/hardblink/images/blink3pointscenter \
+  --answers-file /path/to/output/blink_3pointscenter_answers_long.jsonl \
+  --use-gt-depth-permuted \
+  --gt-depth-encoder facebook/dinov2-base \
+  --gt-depth-map-dir /path/to/hardblink_depth_maps
+```
+
+Every answer row records `ablation_mode`; the forced discrete arms also record `discrete_span_length`. In the paper every depth map, training target and oracle alike, is a Depth Anything (ViT-S) estimate; reading the maps at the marked points reproduces 362 of the 372 HardBLINK answer labels.
+
+### Reproducing the Paper's TRT Numbers
+
+No trained checkpoints are released, so every arm needs a model trained with the scripts above. Some arms also need inputs that are not in the public datasets:
+
+| Paper arm (HardBLINK) | Flags | Extra input | Status |
+| --- | --- | --- | --- |
+| Continuous identity, random, zero, first-repeat | none, `--use-random-depth`, `--use-zero-depth`, `--use-first-depth-repeat` (or `DEPTH_MODES=original,random,zero,first_repeat` in `eval_qwen.sh`) | none | runnable |
+| Continuous oracle, slot shuffle | `--use-gt-depth` or `--use-gt-depth-permuted`, with `--gt-depth-map-dir` | HardBLINK depth maps | not reproducible from public artifacts yet |
+| Discrete identity, random, zero | none; `--use-random-depth` or `--use-zero-depth` with `--discrete-span-length 100` | none | runnable |
+| Discrete oracle, slot shuffle | `--use-gt-depth` or `--use-gt-depth-permuted-discrete`, with `--gt-depth-codebook` | HardBLINK VQ-VAE code file | not reproducible from public artifacts yet |
+| KV cache off (appendix) | `--controlled-kv-off` with the identity, oracle or random arm | as that arm | as that arm |
+| V-channel ablation, matched-budget control, paired confidence intervals | not in this release | | code follows in a later update |
+
+The driver skips a question whose image is missing or whose generation raises an error, so check that each answers file has 124 rows (one HardBLINK subset) before scoring.
 
 ## Optional Web Demo
 

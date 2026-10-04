@@ -657,7 +657,7 @@
       </div>
       <div class="cell" id="cell-cont-qwen">
         <div class="cell-title">Continuous · Qwen2.5-VL-3B</div>
-        <div class="cell-sub">DINOv2, K = 4</div>
+        <div class="cell-sub">DINOv2, K = 64</div>
       </div>
       <div class="cell" id="cell-disc-llava">
         <div class="cell-title">Discrete · LLaVA-13B</div>
@@ -743,18 +743,18 @@
         <div class="mchart">
           <div class="barline">
             <span class="blab">Identity</span>
-            <span class="btrack"><span class="bfill identity" data-target="63.71"></span></span>
-            <span class="bnum">63.71</span>
+            <span class="btrack"><span class="bfill identity" data-target="63.43"></span></span>
+            <span class="bnum">63.43</span>
           </div>
           <div class="barline">
             <span class="blab">1st-repeat</span>
-            <span class="btrack"><span class="bfill firstrep" data-target="63.71"></span></span>
-            <span class="bnum">63.71</span>
+            <span class="btrack"><span class="bfill firstrep" data-target="63.43"></span></span>
+            <span class="bnum">63.43</span>
           </div>
           <div class="barline">
             <span class="blab">Random</span>
-            <span class="btrack"><span class="bfill random" data-target="63.86"></span></span>
-            <span class="bnum">63.86</span>
+            <span class="btrack"><span class="bfill random" data-target="63.00"></span></span>
+            <span class="bnum">63.00</span>
           </div>
           <div class="barline">
             <span class="blab">Zero</span>
@@ -849,10 +849,10 @@ const VARIANTS = [
 ];
 
 const ACT3_DATA = {
-  "cell-cont-llava":  { id: 74.46, rand: 72.58, orc: 74.73, max: 100 },
-  "cell-cont-qwen":   { id: 68.55, rand: 67.20, orc: 67.74, max: 100 },
-  "cell-disc-llava":  { id: 77.69, rand: 68.82, orc: 78.76, max: 100 },
-  "cell-disc-qwen":   { id: 71.24, rand: 51.34, orc: 80.64, max: 100 },
+  "cell-cont-llava":  { id: 74.46, rand: 74.19, orc: 74.73, max: 100 },
+  "cell-cont-qwen":   { id: 67.47, rand: 66.94, orc: 68.82, max: 100 },
+  "cell-disc-llava":  { id: 77.96, rand: 68.82, orc: 81.45, max: 100 },
+  "cell-disc-qwen":   { id: 71.24, rand: 45.43, orc: 80.65, max: 100 },
 };
 const CELL_ORDER = ["cell-cont-llava","cell-cont-qwen","cell-disc-llava","cell-disc-qwen"];
 

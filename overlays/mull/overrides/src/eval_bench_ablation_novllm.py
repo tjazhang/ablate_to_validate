@@ -114,6 +114,15 @@ def main():
       "--gt-max-images", type=int, default=64,
       help="Maximum number of GT images to load from --gt-image-dir"
   )
+  parser.add_argument(
+      "--max-samples", type=int, default=0,
+      help="Cap examples per dataset (0 = all); for quick smoke runs.",
+  )
+  parser.add_argument(
+      "--batch-size", type=int, default=0,
+      help="Override the generation batch size (0 = default 4). The paper's runs used 1 "
+           "for every arm, so the identity and perturbed arms are batched alike.",
+  )
   
   args = parser.parse_args()
   
@@ -130,6 +139,9 @@ def main():
   ]
   if sum(ablation_flags) > 1:
       raise ValueError("Cannot enable more than one ablation mode simultaneously.")
+  if args.batch_size:
+      BSZ = args.batch_size
+      print(f"[BSZ OVERRIDE] batch size = {BSZ}")
   
   # Check if any ablation is enabled
   ablation_enabled = any(ablation_flags)
@@ -697,6 +709,9 @@ def main():
           "do_sample": False,
       }
 
+    if args.max_samples:
+        messages = messages[: args.max_samples]
+        print(f"[SMOKE] capped to {len(messages)} examples (--max-samples)")
     for i in tqdm(
         range(start_idx, len(messages), BSZ), desc="Processing batches"
     ):

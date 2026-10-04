@@ -50,6 +50,8 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from .configuration_qwen2_5_vl import Qwen2_5_VLConfig, Qwen2_5_VLVisionConfig
+# NEW: slot-permutation helpers for the slot-shuffle (gt_permuted) ablation.
+from . import gt_spatial as _gts
 
 
 if is_flash_attn_2_available():
@@ -2423,9 +2425,11 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
                     _ablation_model = getattr(self, '_depth_ablation_model', False)
                     _ablation_first_repeat = getattr(self, '_depth_ablation_first_repeat', False)
                     _ablation_random_gt_dist = getattr(self, '_depth_ablation_random_gt_dist', False)
+                    # Slot-shuffle arm: a mode string ("gt_permuted") or None.
+                    _ablation_gt_spatial = getattr(self, '_gt_spatial_mode', None)
                     _gt_depth_embeddings = getattr(self, '_gt_depth_embeddings_seq', None)
                     
-                    if is_depth_gen and (_ablation_random or _ablation_zero or _ablation_gt or _ablation_first_repeat or _ablation_random_gt_dist):
+                    if is_depth_gen and (_ablation_random or _ablation_zero or _ablation_gt or _ablation_first_repeat or _ablation_random_gt_dist or _ablation_gt_spatial):
                         # Ablation: override the depth vector in depth space (D-dim),
                         # then project through depth_projector to get H-dim embedding.
                         # This matches LLaVA's override_depth_vec path.
@@ -2461,6 +2465,25 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
                                             override_depth_vec = self._apply_depth_head(h)
                                         else:
                                             override_depth_vec = torch.zeros(depth_dim, device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+                                elif _ablation_gt_spatial is not None and _gt_depth_embeddings is not None:
+                                    # Slot-shuffle arm: the GT embeddings of the `gt` arm
+                                    # above, but slot s receives GT[perm[s]]. A slot with
+                                    # no GT source (GT shorter than the span) takes the
+                                    # model's own vector via `_apply_depth_head`, the same
+                                    # construction as the `gt`-exhausted fallback above.
+                                    _slot = getattr(self, '_gt_depth_idx', 0)
+                                    _perm = getattr(self, '_gt_spatial_perm', None)
+                                    _own = None
+                                    if _gts.needs_own_vector(_slot, _ablation_gt_spatial, None,
+                                                             _gt_depth_embeddings.shape[0], _perm):
+                                        if prev_hidden is not None:
+                                            h = prev_hidden[b, -1, :] if prev_hidden.dim() == 3 else prev_hidden[b]
+                                            _own = self._apply_depth_head(h)
+                                    _vec, _src, _src_slot = _gts.resolve_slot(
+                                        _slot, _ablation_gt_spatial, _gt_depth_embeddings,
+                                        _own, marked=None, perm=_perm)
+                                    override_depth_vec = _vec.to(inputs_embeds.dtype).to(inputs_embeds.device)
+                                    self._gt_depth_idx = _slot + 1
                                 elif _ablation_first_repeat:
                                     cached_first = getattr(self, '_first_depth_repeat_vec', None)
                                     if cached_first is not None:
@@ -3134,12 +3157,14 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
         if hasattr(self, '_discrete_depth_ablation_active'):
             del self._discrete_depth_ablation_active
     
-    def set_depth_ablation(self, mode="none", gt_depth_embeddings=None, gt_depth_mean=None, gt_depth_std=None):
+    def set_depth_ablation(self, mode="none", gt_depth_embeddings=None, gt_depth_mean=None, gt_depth_std=None,
+                           gt_spatial=None):
         """
         Set depth ablation mode for evaluation.
         
         Args:
-            mode: One of "none", "random", "zero", "gt", "model", "first_repeat", "random_gt_dist"
+            mode: One of "none", "random", "zero", "gt", "model", "first_repeat", "random_gt_dist",
+                  "gt_permuted"
                 - "none":           Normal inference (no ablation)
                 - "random":         Replace depth token embeddings with random vectors
                 - "zero":           Replace depth token embeddings with zeros
@@ -3147,9 +3172,14 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
                 - "model":          Use model's own predictions (identity sanity check, same as normal)
                 - "first_repeat":   Use first model-predicted depth vector for all remaining depth steps
                 - "random_gt_dist": Replace with random N(mean,std) matched to GT depth distribution
+                - "gt_permuted":    This image's GT embeddings, but slot s receives GT[perm[s]] for
+                                    one fixed permutation shared by every row (slot shuffle;
+                                    continuous path only, needs `gt_spatial`)
             gt_depth_embeddings: Tensor of shape [K, D] for GT ablation mode
             gt_depth_mean: float, mean of GT depth embeddings for random_gt_dist mode
             gt_depth_std:  float, std of GT depth embeddings for random_gt_dist mode
+            gt_spatial: dict, required by "gt_permuted" and ignored by every other mode;
+                carries the permutation ("perm"), its grid, seed and sha.
         """
         # Clear all ablation flags
         self._depth_ablation_random = False
@@ -3163,6 +3193,11 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
         self._first_depth_repeat_vec = None
         self._gt_depth_mean = 0.0
         self._gt_depth_std = 1.0
+        # Slot-shuffle arm state; None on every other mode, so the decode-time branch
+        # is never entered for them.
+        self._depth_ablation_gt_permuted = False
+        self._gt_spatial_mode = None
+        self._gt_spatial_perm = None
         
         if mode == "random":
             self._depth_ablation_random = True
@@ -3188,10 +3223,29 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
             self._gt_depth_mean = gt_depth_mean if gt_depth_mean is not None else 0.0
             self._gt_depth_std = gt_depth_std if gt_depth_std is not None else 1.0
             print(f"[ABLATION] Depth ablation mode: RANDOM_GT_DIST (distribution-matched random, mean={self._gt_depth_mean:.4f}, std={self._gt_depth_std:.4f})")
+        elif mode == "gt_permuted":
+            if gt_spatial is None or not gt_spatial.get("perm"):
+                raise ValueError(
+                    "depth ablation mode 'gt_permuted' requires gt_spatial={'perm': ...}; "
+                    "without it the arm would silently be the plain 'gt' arm.")
+            perm = tuple(int(x) for x in gt_spatial["perm"])
+            facts = _gts.permutation_facts(perm, int(gt_spatial.get("grid", _gts.GRID)))
+            if not (facts["is_permutation"] and facts["is_derangement"]):
+                raise ValueError(f"gt_spatial['perm'] is not a derangement of 0..K-1: {facts}")
+            self._depth_ablation_gt_permuted = True
+            self._gt_spatial_mode = mode
+            self._gt_spatial_perm = perm
+            if gt_depth_embeddings is not None:
+                self._gt_depth_embeddings_seq = gt_depth_embeddings
+            print(f"[ABLATION] Depth ablation mode: GT_PERMUTED (this image's GT, "
+                  f"slot s <- GT[perm[s]]; seed={gt_spatial.get('perm_seed')}, "
+                  f"sha={str(gt_spatial.get('perm_sha'))[:12]}, "
+                  f"derangement, {facts['n_moved_cheb_ge']}/{facts['k']} slots moved "
+                  f">= {_gts.PERM_MIN_CHEBYSHEV} cells)")
         elif mode == "none":
             print("[ABLATION] Depth ablation mode: NONE (normal inference)")
         else:
-            raise ValueError(f"Unknown depth ablation mode: {mode}. Use 'none', 'random', 'zero', 'gt', 'model', 'first_repeat', or 'random_gt_dist'.")
+            raise ValueError(f"Unknown depth ablation mode: {mode}. Use 'none', 'random', 'zero', 'gt', 'model', 'first_repeat', 'random_gt_dist', or 'gt_permuted'.")
     
     def clear_depth_ablation(self):
         """Clear all depth ablation flags."""
@@ -3206,6 +3260,9 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
         self._first_depth_repeat_vec = None
         self._gt_depth_mean = 0.0
         self._gt_depth_std = 1.0
+        self._depth_ablation_gt_permuted = False
+        self._gt_spatial_mode = None
+        self._gt_spatial_perm = None
         # Clear discrete depth ablation state tracker
         if hasattr(self, '_discrete_depth_ablation_active'):
             del self._discrete_depth_ablation_active

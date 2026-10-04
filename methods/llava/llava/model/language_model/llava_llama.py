@@ -37,6 +37,46 @@ from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 from llava.constants import IGNORE_INDEX, DEPTH_TOKEN_ID, DEPTH_START_ID, DEPTH_END_ID, IMAGE_TOKEN_INDEX
 
 
+# NEW: Aurora slot-shuffle ablation (continuous depth tokens only). The eval driver
+# builds one fixed permutation per run (llava/gt_spatial.py); this helper applies it
+# to the GT depth sequence before injection.
+def apply_gt_slot_permutation(gt_depth_seq, perm):
+    """The slot-shuffle operator: slot ``s`` receives ``GT[perm[s]]``.
+
+    Returns a new ``[K, D]`` tensor; ``gt_depth_seq`` is not modified. The decode loop
+    walks its GT sequence with a plain counter, so reordering the sequence once is
+    exactly "index the GT by ``perm[idx]``": every later step (the dtype/device cast,
+    the exhaustion fallback, the per-slot capture) is the oracle arm's code, unchanged.
+
+    The permutation is not built here. The eval driver builds it once per run with
+    ``gt_spatial.build_slot_permutation`` and records it beside the answers; this
+    function validates it. A ``perm`` that has the wrong length, is not a permutation,
+    or is not a derangement would produce a span that looks well-formed while being
+    partly or wholly the oracle's.
+    """
+    if perm is None:
+        raise ValueError(
+            "use_gt_depth_permuted=True needs gt_depth_permutation; without it the arm "
+            "would silently be the plain GT (oracle) arm.")
+    perm = [int(x) for x in perm]
+    k = int(gt_depth_seq.size(0))
+    if len(perm) != k:
+        raise ValueError(
+            f"gt_depth_permutation has {len(perm)} entries but the GT span has {k} slots; "
+            "a length mismatch would shuffle part of the span and leave the rest oracle.")
+    if sorted(perm) != list(range(k)):
+        raise ValueError(
+            "gt_depth_permutation is not a permutation of 0..K-1, so the shuffled span "
+            "would drop or duplicate GT slots instead of reordering them.")
+    if any(perm[i] == i for i in range(k)):
+        fixed = [i for i in range(k) if perm[i] == i]
+        raise ValueError(
+            f"gt_depth_permutation is not a derangement: {len(fixed)} slot(s) keep their "
+            f"own GT vector (first {fixed[:5]}).")
+    index = torch.as_tensor(perm, dtype=torch.long, device=gt_depth_seq.device)
+    return gt_depth_seq.index_select(0, index)
+
+
 # NEW: Aurora discrete-depth ablations are implemented as logits processors so
 # generation can force GT, random, or zero-valued depth token spans without
 # rewriting Hugging Face generation internals.
@@ -901,6 +941,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         force_end_after_k=True,
         use_gt_depth_embeddings=False,
         gt_depth_embeddings: Optional[torch.Tensor] = None,
+        use_gt_depth_permuted=False,
+        gt_depth_permutation=None,
         use_random_depth=False,
         use_zero_depth=False,
         use_model_depth=False,
@@ -1001,6 +1043,19 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             print(f"[GT DEPTH] Target depth count: {target_depth_count}, GT sequence length: {gt_depth_seq.size(0)}")
             if gt_depth_seq.size(0) != target_depth_count:
                 print(f"[DEPTH DEBUG] WARNING: GT depth embeddings len {gt_depth_seq.size(0)} != target_depth_count {target_depth_count}")
+            # NEW: slot-shuffle arm. Reorder once, after the cast and the length check and
+            # before the first injection, so every slot the loop below writes is
+            # GT[perm[slot]] and the oracle path above is unchanged.
+            if use_gt_depth_permuted:
+                gt_depth_seq = apply_gt_slot_permutation(gt_depth_seq, gt_depth_permutation)
+                print(f"[GT PERMUTED] slot s <- GT[perm[s]] over {gt_depth_seq.size(0)} slots")
+        elif use_gt_depth_permuted:
+            # The arm is the oracle arm with the slot order changed; without the oracle's
+            # GT sequence the run would be an identity pass recorded under this arm's name.
+            raise ValueError(
+                "use_gt_depth_permuted=True requires use_gt_depth_embeddings=True and a "
+                "gt_depth_embeddings tensor: the shuffled span is this image's GT span, "
+                "reordered.")
         
         # Initialize random depth embeddings
         random_depth_seq = None
@@ -1338,6 +1393,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         raw_hidden_state: bool = False,
         use_gt_depth_embeddings: bool = False,
         gt_depth_embeddings: Optional[torch.Tensor] = None,
+        use_gt_depth_permuted: bool = False,
+        gt_depth_permutation: Optional[List[int]] = None,
         gt_discrete_token_ids: Optional[List[int]] = None,
         use_random_depth: bool = False,
         use_zero_depth: bool = False,
@@ -1429,6 +1486,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             raise ValueError("Ground truth depth embeddings are only supported for continuous depth tokens.")
         if discrete_mode and use_first_depth_repeat:
             raise ValueError("First-depth-repeat ablation is only supported for continuous depth tokens.")
+        if discrete_mode and use_gt_depth_permuted:
+            raise ValueError("The slot-shuffle (gt-permuted) ablation is only supported for continuous depth tokens.")
 
         if gt_depth_tensor is not None and not use_customize_greedy:
             raise ValueError("Ground truth depth embeddings require use_customize_greedy=True.")
@@ -1449,6 +1508,17 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         if gt_depth_flag:
             print(f"[GT DEPTH] generate() called with GT embeddings: shape={gt_depth_tensor.shape}, dtype={gt_depth_tensor.dtype}")
         
+        # NEW: the slot-shuffle arm is the GT arm with the slot order changed, so it rides
+        # gt_depth_flag instead of adding an entry to ablation_flags above, and it is
+        # refused here when the GT operand is absent (it would otherwise run as identity).
+        if use_gt_depth_permuted:
+            if not gt_depth_flag:
+                raise ValueError(
+                    "use_gt_depth_permuted=True but no gt_depth_embeddings reached "
+                    "generate(): the shuffled span is this image's GT span reordered.")
+            print(f"[GT PERMUTED] generate() called with the slot-shuffle ablation "
+                  f"enabled (perm of {len(gt_depth_permutation or [])} slots)")
+
         if use_random_depth:
             print(f"[RANDOM DEPTH] generate() called with random depth ablation enabled")
         
@@ -1485,6 +1555,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             use_model_depth = False
             use_first_depth_repeat = False
             use_random_depth_gt_dist = False
+            use_gt_depth_permuted = False
 
         # For discrete depth tokens, use standard generation
         if discrete_mode:
@@ -1604,6 +1675,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 raw_hidden_state=raw_hidden_state,
                 use_gt_depth_embeddings=gt_depth_flag,
                 gt_depth_embeddings=gt_depth_tensor,
+                use_gt_depth_permuted=use_gt_depth_permuted,
+                gt_depth_permutation=gt_depth_permutation,
                 use_random_depth=use_random_depth,
                 use_zero_depth=use_zero_depth,
                 use_model_depth=use_model_depth,

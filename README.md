@@ -1,4 +1,4 @@
-# Ablate-to-Validate: Are Vision-Language Models Really Using Visual Reasoning Tokens?
+# Ablate-to-Validate: Are Vision-Language Models Really Using Continuous Thought Tokens?
 
 \[[arXiv](https://arxiv.org/abs/2605.21642)\] &nbsp; \[[Paper PDF](docs/assets/atv_paper.pdf)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
 
@@ -25,6 +25,37 @@ Vision-language models (VLMs) are increasingly augmented with continuous or late
 <p align="center">
   <em>▶ <a href="docs/assets/atv_teaser.mp4">animated explainer</a> · <a href="https://tjazhang.github.io/ablate_to_validate/">project page</a> · <a href="assets/teaser_animation/">animation source</a></em>
 </p>
+
+## Updates (revised manuscript, Sept 2026)
+
+The project page and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
+
+| Result | arXiv v1 | Revised | Reason |
+| --- | --- | --- | --- |
+| LLaVA-13B No-aux | 76.68 | 75.54 | Retrained as the paper defines No-aux: trained to output only the final answer. |
+| LLaVA-13B discrete, identity | 77.69 | 77.96 | The scorer (`eval_answers.py`) accepts one additional answer phrasing. |
+| LLaVA-13B discrete, oracle | 78.76 | 81.45 | The v1 run never forced the oracle tokens (a token-matching bug in the discrete eval driver, fixed in this release). |
+| LLaVA-13B continuous TRT, random | 72.58 | 74.19 | The v1 value came from a different checkpoint; every row of the block now uses the λ_depth = 1.0 checkpoint. |
+| LLaVA-13B, CLIP, full span | 67.20 | 65.86 | The v1 cell held the Qwen2.5-VL value. |
+| LLaVA-13B continuous, VQ-VAE, K = 100 | 70.97 | 70.70 | Same checkpoint, evaluated again: the row now reports the identity run of the matched-budget control, so the revised manuscript gives one number for this model. |
+| LLaVA-13B, SigLIP2, K = 64, 50 epochs, learning rate 1e-5 | 64.00 | 60.48 | A sourced result replaces an unsourced value. |
+| LLaVA-13B base model | 32.00 | 33.60 | A sourced result replaces an unsourced value. |
+| Qwen2.5-VL-3B base model | 54.30 | not reported | No source for the v1 value was found, so the revised manuscript leaves the cell empty. |
+| Qwen2.5-VL-3B No-aux | 58.87 | 66.40 | Retrained with the depth models' recipe (10 epochs, learning rate 2e-4). |
+| Qwen2.5-VL-3B, DINOv2, K = 4 / 16 / 64 | 68.55 / 63.98 / 61.47 | 65.32 / 66.94 / 67.47 | Retrained on the current code; the v1 K = 4 value did not reproduce. |
+| Qwen2.5-VL-3B continuous (best) | 68.55 | 68.28 | With the DINOv2 row retrained, the best cell is CLIP, K = 16. |
+| Qwen2.5-VL-3B continuous TRT, identity / oracle / random / first-repeat | 68.55 / 67.74 / 67.20 / 68.01 (K = 4) | 67.47 / 68.82 / 66.94 / 4.30 (K = 64) | The TRT cell is now DINOv2, K = 64. At K = 64, first-repeat collapses decoding (no answer after the span on 343/372 questions, scored as wrong). |
+| Qwen2.5-VL-3B discrete TRT, random / zero | 51.34 / 58.87 | 45.43 / 59.14 | The eval driver forced 256 codes instead of the model's own span length; fixed in this release. |
+| Qwen2.5-VL-3B discrete TRT, oracle | 80.64 | 80.65 | Rounding. |
+| Mull-Tokens, BLINK: identity / first-repeat / random / zero | 63.71 / 63.71 / 63.86 / 63.43 | 63.43 / 63.43 / 63.00 / 63.43 | Re-measured on the no-vLLM driver, which applies the replacements (the vLLM path ignores them); greedy decoding, batch size 1 for every arm. |
+
+Mull-Tokens: the SAT and GRPO columns also changed, and the v1 "Random (same dist)" row is now "Random (second draw)"; see the revised manuscript.
+
+The table lists the main changes, not every one: several per-subset (3/4/5-point) values also changed; the Mirage table now covers VSP Spatial Planning only (its HardBLINK columns are dropped, and its oracle and GT-distribution rows now name the helper image); and the KV-cache-off check (Qwen2.5-VL-3B, DINOv2) moved from a K = 4 table to a K = 64 re-run reported in the appendix text.
+
+New in the revised manuscript: a slot-shuffle arm (the oracle span with its slots reordered by one fixed permutation), a matched-budget control (the same 100 VQ-VAE depth tokens read as codebook embeddings or as token IDs), an attention-value (V-channel) ablation, and paired confidence intervals. Two continuous arms collapse decoding and are scored as wrong: LLaVA-13B zero (no answer after the span on 372/372 questions) and Qwen2.5-VL-3B first-repeat (343/372).
+
+Code in this release: the slot-shuffle arms, the discrete span-length fix (LLaVA and Qwen drivers), the LLaVA discrete token-id resync and the KV-cache-off flags (see the [LLaVA](methods/llava/USER_GUIDE.md) and [Qwen](methods/qwen/USER_GUIDE.md) guides), and batch-size control for the [Mull](overlays/mull/USER_GUIDE.md) driver. The V-channel ablation, the matched-budget control, the paired confidence intervals and the launch scripts follow in a later update.
 
 ---
 

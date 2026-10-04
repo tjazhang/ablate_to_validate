@@ -14,6 +14,14 @@ Supports depth embedding ablation modes:
   --use-model-depth          Identity sanity check (same as normal inference)
   --use-first-depth-repeat   Use first model-predicted depth vector for all remaining depth steps
   --use-random-depth-gt-dist Replace depth embeddings with random vectors matched to GT distribution
+  --use-gt-depth-permuted    Inject GT depth embeddings with the slots shuffled by one fixed
+                             permutation (slot shuffle; continuous models)
+  --use-gt-depth-permuted-discrete
+                             Force GT depth codes with the slots shuffled by one fixed
+                             permutation (slot shuffle; discrete models)
+  --disable-kv-cache         Disable the KV cache during generation
+  --controlled-kv-off        Use the KV cache until <DEPTH_START>, then recompute every step
+                             (continuous models)
 """
 
 import argparse
@@ -28,7 +36,14 @@ import torch
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoTokenizer, LogitsProcessor, LogitsProcessorList
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    LogitsProcessor,
+    LogitsProcessorList,
+    StoppingCriteria,
+    StoppingCriteriaList,
+)
 from qwen_vl_utils import process_vision_info
 
 # Add qwenvl to path for custom model
@@ -37,6 +52,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Import custom model with depth support
 from qwenvl.modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
 from qwenvl.configuration_qwen2_5_vl import Qwen2_5_VLConfig
+# Slot-permutation helpers for the slot-shuffle arms (same module as the LLaVA drivers').
+from qwenvl import gt_spatial as _gts
 
 try:
     from peft import PeftModel
@@ -46,7 +63,23 @@ except Exception:
 
 
 DEFAULT_GT_DEPTH_CODEBOOK = None
-CONTINUOUS_ABLATION_MODES = {"random", "zero", "gt", "model", "first_repeat", "random_gt_dist"}
+CONTINUOUS_ABLATION_MODES = {"random", "zero", "gt", "model", "first_repeat", "random_gt_dist",
+                             "gt_permuted"}
+
+# Slot shuffle on the discrete span: the same operator as `gt_permuted`, applied to the
+# 10x10 grid of VQ-VAE code ids that the discrete GT arm forces. A separate mode string,
+# deliberately not in CONTINUOUS_ABLATION_MODES, so the continuous arm keeps being refused
+# on a discrete checkpoint and vice versa.
+DISCRETE_GT_PERMUTED_MODE = "gt_permuted_discrete"
+# The discrete span is the VQ-VAE's 10x10 code grid. It is not `config.continuous_K`: on
+# the discrete checkpoints that field is leftover template state (256).
+DISCRETE_DEPTH_GRID = 10
+DISCRETE_DEPTH_K = DISCRETE_DEPTH_GRID * DISCRETE_DEPTH_GRID
+# The acceptance bar of the K=64 permutation (60 of 64 slots moved), scaled to this grid.
+DISCRETE_PERM_MIN_MOVED = int(round(
+    _gts.PERM_MIN_MOVED / _gts.K_DEFAULT * DISCRETE_DEPTH_K))
+# Discrete arms whose span is forced token by token through a LogitsProcessor.
+DISCRETE_FORCED_MODES = ("gt", "random", "zero", DISCRETE_GT_PERMUTED_MODE)
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +225,18 @@ class ContinuousDepthLogitsProcessor(LogitsProcessor):
                     scores[:, self.depth_end_id] = float('-inf')
         
         return scores
+
+
+class StopOnTokenCriteria(StoppingCriteria):
+    """Stop generation immediately after a specific token is emitted."""
+
+    def __init__(self, token_id: int):
+        self.token_id = token_id
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        if input_ids.shape[1] == 0:
+            return False
+        return input_ids[0, -1].item() == self.token_id
 
 
 class DiscreteGroundTruthDepthProvider:
@@ -391,12 +436,56 @@ def ensure_continuous_ablation_state(model, ablation_mode: str) -> None:
         "model": "_depth_ablation_model",
         "first_repeat": "_depth_ablation_first_repeat",
         "random_gt_dist": "_depth_ablation_random_gt_dist",
+        "gt_permuted": "_depth_ablation_gt_permuted",
     }[ablation_mode]
 
     if not getattr(model, expected_flag, False):
         raise RuntimeError(
             f"Continuous ablation mode '{ablation_mode}' requested but model flag '{expected_flag}' is not enabled."
         )
+
+
+def write_permutation_json(answers_file: str, gt_spatial: dict) -> str:
+    """Record the fixed slot permutation of a slot-shuffle arm beside its answers.
+
+    Chunked runs of one arm write into the same dir, so an existing file is compared
+    rather than overwritten: runs that disagree would mean the arm's rows were not all
+    produced under one permutation, and that is a hard failure.
+    """
+    out_dir = os.path.dirname(os.path.abspath(answers_file))
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "_permutation.json")
+    rec = {
+        "mode": gt_spatial["mode"],
+        "perm_seed": gt_spatial["perm_seed"],
+        "perm": list(gt_spatial["perm"]),
+        "perm_sha256": gt_spatial["perm_sha"],
+        "grid": gt_spatial["grid"],
+        "K": gt_spatial["K"],
+        "builder": ("gt_spatial.build_slot_permutation"
+                    "(k=K, seed=perm_seed, grid=grid, min_moved=min_moved_cheb, "
+                    "min_cheb=min_chebyshev)"),
+        "properties": gt_spatial["perm_facts"],
+        # The acceptance bar the permutation was drawn under (60 for K=64; scaled for
+        # the discrete 10x10 grid).
+        "min_moved_cheb": gt_spatial.get("perm_min_moved", _gts.PERM_MIN_MOVED),
+        "min_chebyshev": _gts.PERM_MIN_CHEBYSHEV,
+    }
+    if os.path.exists(path):
+        prev = json.load(open(path))
+        if (prev.get("perm_sha256") != rec["perm_sha256"]
+                or prev.get("perm_seed") != rec["perm_seed"]):
+            raise RuntimeError(
+                f"{path} already records permutation seed {prev.get('perm_seed')} / sha "
+                f"{prev.get('perm_sha256')}, but this run would inject seed "
+                f"{rec['perm_seed']} / sha {rec['perm_sha256']}. All answers of one arm "
+                "must be produced under one permutation.")
+        return path
+    with open(path, "w") as fh:
+        json.dump(rec, fh, indent=1)
+    print(f"[GT SPATIAL] wrote {path} (seed {rec['perm_seed']}, "
+          f"sha {rec['perm_sha256'][:12]})")
+    return path
 
 
 def validate_continuous_generation_output(
@@ -530,7 +619,9 @@ def load_model_and_processor(
 @torch.inference_mode()
 def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
                     ablation_mode="none", gt_depth_embeddings=None,
-                    gt_discrete_token_ids: Optional[List[int]] = None):
+                    gt_discrete_token_ids: Optional[List[int]] = None,
+                    discrete_span_length: Optional[int] = None,
+                    use_cache: bool = True):
     """
     Generate answer using greedy decoding (deterministic).
     
@@ -547,6 +638,11 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
         verbose: Whether to print token statistics
         ablation_mode: One of "none", "random", "zero", "gt", "model", "first_repeat"
         gt_depth_embeddings: ``[K, D]`` tensor for GT ablation
+        discrete_span_length: Number of depth codes to force between ``<DEPTH_START>``
+            and ``<DEPTH_END>`` for the discrete random/zero ablations (the GT arms force
+            their own sequence). Required for those modes; the caller sources it from the
+            per-image GT code sequence or ``--discrete-span-length``.
+        use_cache: Whether to use the generation KV cache
     
     Returns:
         Generated answer text
@@ -581,17 +677,31 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
     if use_discrete:
         discrete_depth_token_ids = get_discrete_depth_token_ids(processor.tokenizer)
 
-    discrete_target_tokens = int(continuous_K or 100)
+    # The discrete forced span length is supplied by the caller (per-image GT code
+    # count, or --discrete-span-length). It is deliberately not read from
+    # config.continuous_K: that field is continuous-only and on discrete checkpoints
+    # it is leftover template state (256), which made the random/zero arms force
+    # 2.56x more codes than identity/GT emit.
+    discrete_target_tokens = int(discrete_span_length) if discrete_span_length else None
 
     # ---- PATH 1: LogitsProcessor constrained generation (discrete token forcing) ----
     # For discrete ablations we must force token IDs, then rely on the model's
     # ordinary token embedding lookup for those IDs. Mixing this with model-side
     # embedding overrides would make the visible depth tokens diverge from the
     # embeddings actually consumed during generation.
-    if use_discrete and depth_start_id is not None and depth_end_id is not None and ablation_mode in {"gt", "random", "zero"}:
+    if use_discrete and depth_start_id is not None and depth_end_id is not None and ablation_mode in DISCRETE_FORCED_MODES:
         logits_processors = LogitsProcessorList()
 
-        if ablation_mode == "gt":
+        if ablation_mode in {"random", "zero"} and not discrete_target_tokens:
+            raise ValueError(
+                f"Discrete '{ablation_mode}' ablation requires discrete_span_length "
+                "(the per-image GT code count, or --discrete-span-length) so the forced "
+                "span is length-matched to identity/GT."
+            )
+
+        # The slot-shuffle arm rides the GT processor: eval_model hands it the GT code
+        # sequence already reordered by the fixed slot permutation.
+        if ablation_mode in ("gt", DISCRETE_GT_PERMUTED_MODE):
             if not gt_discrete_token_ids:
                 raise ValueError("Discrete GT ablation requires gt_discrete_token_ids for the current image.")
             if verbose:
@@ -632,7 +742,7 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
             do_sample=False,
             temperature=0,
             num_beams=1,
-            use_cache=True,
+            use_cache=use_cache,
             logits_processor=logits_processors,
         )
 
@@ -656,7 +766,7 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
             do_sample=False, 
             temperature=0,        
             num_beams=1,
-            use_cache=True,
+            use_cache=use_cache,
             logits_processor=[logits_processor],
         )
     else:
@@ -667,7 +777,7 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
             do_sample=False, 
             temperature=0,        
             num_beams=1,
-            use_cache=True,
+            use_cache=use_cache,
         )
     
     # Trim the prompt part before decoding
@@ -719,11 +829,315 @@ def generate_greedy(model, processor, messages, max_new_tokens, verbose=False,
     return out_text[0]
 
 
+@torch.inference_mode()
+def generate_greedy_kv_off(
+    model,
+    processor,
+    messages,
+    max_new_tokens,
+    verbose=False,
+    ablation_mode="none",
+    gt_depth_embeddings=None,
+    controlled_kv_off=False,
+):
+    """Greedy decoding with the KV cache off: the full sequence is recomputed every step.
+
+    Continuous depth models only. With ``controlled_kv_off`` the prefix through
+    ``<DEPTH_START>`` is first generated with normal cached generation, and only the
+    depth span and the answer are recomputed without the cache (``--controlled-kv-off``).
+    Without it every step is recomputed (``--disable-kv-cache``). The depth-span
+    ablations are applied in depth space and projected through the model's bottleneck,
+    as on the cached path.
+    """
+    if getattr(model.config, "use_discrete_depth_tokens", False):
+        raise ValueError("The KV-cache-off decode supports continuous depth models only.")
+
+    # ---- 1. Prepare inputs using the standard processor pipeline ----
+    text = processor.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True,
+    )
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(
+        text=[text], images=image_inputs, videos=video_inputs,
+        padding=True, return_tensors="pt",
+    ).to(model.device)
+
+    input_ids = inputs["input_ids"]               # [1, L]
+    pixel_values = inputs.get("pixel_values")
+    image_grid_thw = inputs.get("image_grid_thw")
+
+    # ---- 2. Depth configuration ----
+    continuous_K = int(getattr(model.config, "continuous_K", 0) or 0)
+    depth_start_id = getattr(model.config, "depth_start_token_id", None)
+    depth_token_id = getattr(model.config, "depth_token_id", None)
+    depth_end_id = getattr(model.config, "depth_end_token_id", None)
+    # Stop on the union of the config and generation_config eos ids, as model.generate
+    # does (the config alone may carry only one of them).
+    eos_token_id = []
+    for _src in (model.config.eos_token_id,
+                 getattr(getattr(model, "generation_config", None), "eos_token_id", None)):
+        if isinstance(_src, int):
+            _src = [_src]
+        for _t in (_src or []):
+            if _t not in eos_token_id:
+                eos_token_id.append(_t)
+
+    # ---- 3. Cached prefix generation (controlled_kv_off only) ----
+    # Run before any other GPU work so the cached prefix matches the standard cached
+    # path (generate_greedy).
+    cached_prefix_ids: list = []
+    start_in_depth = False
+    if controlled_kv_off:
+        if depth_start_id is None:
+            return generate_greedy(
+                model,
+                processor,
+                messages,
+                max_new_tokens,
+                verbose=verbose,
+                ablation_mode=ablation_mode,
+                gt_depth_embeddings=gt_depth_embeddings,
+                use_cache=True,
+            )
+
+        if verbose:
+            print("[CONTROLLED_KV_OFF] Generating cached prefix through <DEPTH_START>")
+
+        logits_processor = None
+        if continuous_K and depth_token_id is not None and depth_end_id is not None:
+            logits_processor = [ContinuousDepthLogitsProcessor(
+                depth_start_token_id=depth_start_id,
+                depth_token_id=depth_token_id,
+                depth_end_token_id=depth_end_id,
+                continuous_K=continuous_K,
+            )]
+
+        cached_out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            temperature=0,
+            num_beams=1,
+            use_cache=True,
+            logits_processor=logits_processor,
+            stopping_criteria=StoppingCriteriaList([StopOnTokenCriteria(depth_start_id)]),
+        )
+        prompt_len = input_ids.shape[1]
+        cached_generated = cached_out[0, prompt_len:]
+        if cached_generated.numel() == 0:
+            return ""
+
+        cached_prefix_ids = cached_generated.tolist()
+        if cached_prefix_ids[-1] != depth_start_id:
+            if verbose:
+                print("[CONTROLLED_KV_OFF] <DEPTH_START> was not generated; returning cached output")
+            return processor.batch_decode(
+                cached_generated.unsqueeze(0),
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )[0]
+
+        if hasattr(model, "reset_depth_token_counters"):
+            model.reset_depth_token_counters()
+        if hasattr(model, "_gt_depth_idx"):
+            model._gt_depth_idx = 0
+        if hasattr(model, "_first_depth_repeat_vec"):
+            model._first_depth_repeat_vec = None
+
+    # ---- 4. Compute mRoPE position_ids ----
+    # attention_mask is passed by keyword: positionally it would land in
+    # second_per_grid_ts.
+    attn_2d = torch.ones_like(input_ids)
+    position_ids, rope_deltas = model.get_rope_index(
+        input_ids, image_grid_thw, attention_mask=attn_2d,
+    )
+    position_ids = position_ids.to(model.device)
+
+    # ---- 5. Build inputs_embeds (encode images once) ----
+    inputs_embeds = model.model.embed_tokens(input_ids)
+    if pixel_values is not None:
+        pv = pixel_values.type(model.visual.dtype)
+        image_embeds = model.visual(pv, grid_thw=image_grid_thw)
+        n_img_tok = (input_ids == model.config.image_token_id).sum().item()
+        n_img_feat = image_embeds.shape[0]
+        if n_img_tok != n_img_feat:
+            B, H = input_ids.shape[0], image_embeds.shape[-1]
+            image_embeds = image_embeds.view(B, -1, H)
+            image_embeds = image_embeds[:, : n_img_tok // B, :].contiguous()
+            image_embeds = image_embeds.view(-1, H)
+        img_mask = input_ids == model.config.image_token_id
+        inputs_embeds = inputs_embeds.masked_scatter(
+            img_mask.unsqueeze(-1).expand_as(inputs_embeds),
+            image_embeds.to(inputs_embeds.device, inputs_embeds.dtype),
+        )
+
+    # ---- 6. Ablation vectors ----
+    depth_dim = getattr(model, "depth_input_dim", None) or model.config.hidden_size
+    if hasattr(model, "depth_projector") and model.depth_projector is not None:
+        proj_dtype = next(model.depth_projector.parameters()).dtype
+    else:
+        proj_dtype = inputs_embeds.dtype
+
+    gt_depth_seq = None
+    if gt_depth_embeddings is not None:
+        gt_depth_seq = gt_depth_embeddings.to(model.device).to(proj_dtype)
+
+    ablation_zero_vec = None
+    if ablation_mode == "zero" and continuous_K > 0:
+        ablation_zero_vec = torch.zeros(1, depth_dim, device=model.device, dtype=proj_dtype)
+    ablation_random_vecs = None
+    if ablation_mode == "random" and continuous_K > 0:
+        ablation_random_vecs = torch.rand(
+            continuous_K, depth_dim, device=model.device, dtype=proj_dtype,
+        ) * 2.0 - 1.0
+    ablation_random_gt_dist_vecs = None
+    if ablation_mode == "random_gt_dist" and continuous_K > 0:
+        gt_mean = float(getattr(model, "_gt_depth_mean", 0.0))
+        gt_std = float(getattr(model, "_gt_depth_std", 1.0))
+        ablation_random_gt_dist_vecs = torch.randn(
+            continuous_K, depth_dim, device=model.device, dtype=proj_dtype,
+        ) * gt_std + gt_mean
+
+    # ---- 7. Append the cached prefix to embeds/position_ids ----
+    if cached_prefix_ids:
+        prefix_tensor = torch.tensor([cached_prefix_ids], device=model.device, dtype=torch.long)
+        prefix_embeds = model.model.embed_tokens(prefix_tensor)
+        inputs_embeds = torch.cat([inputs_embeds, prefix_embeds], dim=1)
+        pos_increments = torch.arange(
+            1,
+            len(cached_prefix_ids) + 1,
+            device=model.device,
+            dtype=position_ids.dtype,
+        ).view(1, 1, -1)
+        position_ids = torch.cat([position_ids, position_ids[:, :, -1:] + pos_increments], dim=-1)
+        start_in_depth = cached_prefix_ids[-1] == depth_start_id
+
+        if verbose:
+            print(
+                "[CONTROLLED_KV_OFF] Cached prefix complete; disabling KV cache "
+                f"after {len(cached_prefix_ids)} generated token(s)"
+            )
+
+    # ---- 8. Decode loop (full recompute, no KV cache) ----
+    generated_ids: list = list(cached_prefix_ids)
+    in_depth = start_in_depth
+    past_depth_end = False
+    depth_count = 0
+    depth_embeds_list: list = []
+    random_depth_idx = 0
+    random_gt_dist_idx = 0
+    prev_pred_depth_vec = None
+    first_repeat_vec = None
+
+    tag = "CONTROLLED_KV_OFF" if controlled_kv_off else "NO_KV"
+    if verbose:
+        print(f"[{tag}] Prefill: {inputs_embeds.shape[1]} tokens, target_depth={continuous_K}")
+
+    for step in range(len(generated_ids), max_new_tokens):
+        outputs = model.model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=torch.ones(inputs_embeds.shape[:2], dtype=torch.long, device=model.device),
+            position_ids=position_ids,
+            use_cache=False,
+            output_hidden_states=True,
+        )
+
+        hidden_states = outputs.last_hidden_state          # [1, L, H]
+        logits = model.lm_head(hidden_states[:, -1:, :])   # [1, 1, V]
+        logits = logits.squeeze(1)                          # [1, V]
+
+        # --- depth token forcing ---
+        if in_depth and depth_count < continuous_K:
+            next_token_id = depth_token_id
+            depth_count += 1
+        elif in_depth and depth_count >= continuous_K:
+            next_token_id = depth_end_id
+            in_depth = False
+            past_depth_end = True
+        else:
+            # Outside the forced depth span, <DEPTH_END> should never be emitted.
+            if depth_end_id is not None:
+                logits[:, depth_end_id] = float("-inf")
+            next_token_id = torch.argmax(logits, dim=-1).item()
+
+        if next_token_id == depth_start_id and not in_depth and not past_depth_end:
+            in_depth = True
+            depth_count = 0
+
+        generated_ids.append(next_token_id)
+
+        # --- compute embedding for the new token ---
+        if in_depth and depth_count > 0:
+            h = hidden_states[:, -1, :]                # [1, H]
+            override_depth_vec = None
+            if ablation_mode == "zero" and ablation_zero_vec is not None:
+                override_depth_vec = ablation_zero_vec
+            elif ablation_mode == "random" and ablation_random_vecs is not None:
+                idx = min(random_depth_idx, ablation_random_vecs.shape[0] - 1)
+                override_depth_vec = ablation_random_vecs[idx : idx + 1]
+                random_depth_idx += 1
+            elif ablation_mode == "random_gt_dist" and ablation_random_gt_dist_vecs is not None:
+                idx = min(random_gt_dist_idx, ablation_random_gt_dist_vecs.shape[0] - 1)
+                override_depth_vec = ablation_random_gt_dist_vecs[idx : idx + 1]
+                random_gt_dist_idx += 1
+            elif ablation_mode == "gt" and gt_depth_seq is not None:
+                gt_idx = depth_count - 1
+                if gt_idx < gt_depth_seq.shape[0]:
+                    override_depth_vec = gt_depth_seq[gt_idx : gt_idx + 1]
+            elif ablation_mode == "model" and prev_pred_depth_vec is not None:
+                override_depth_vec = prev_pred_depth_vec
+            elif ablation_mode == "first_repeat" and first_repeat_vec is not None:
+                override_depth_vec = first_repeat_vec
+
+            if override_depth_vec is not None:
+                projected, depth_vec = model._apply_depth_bottleneck(
+                    h, override_depth_vec=override_depth_vec,
+                )
+            else:
+                projected, depth_vec = model._apply_depth_bottleneck(h)
+
+            if ablation_mode == "model":
+                prev_pred_depth_vec = depth_vec.detach().clone()
+            if ablation_mode == "first_repeat" and first_repeat_vec is None:
+                first_repeat_vec = depth_vec.detach().clone()
+
+            new_embed = projected.unsqueeze(1)              # [1, 1, H]
+            depth_embeds_list.append(depth_vec.detach())
+        else:
+            tok = torch.tensor([[next_token_id]], device=model.device)
+            new_embed = model.model.embed_tokens(tok)       # [1, 1, H]
+
+        # --- extend sequences ---
+        inputs_embeds = torch.cat([inputs_embeds, new_embed], dim=1)
+        next_pos = position_ids[:, :, -1:] + 1
+        position_ids = torch.cat([position_ids, next_pos], dim=-1)
+
+        # --- stopping criteria ---
+        if not in_depth and next_token_id in (eos_token_id or []):
+            break
+        if step >= max_new_tokens - 1:
+            break
+
+    if verbose:
+        print(f"[{tag}] Done. generated={len(generated_ids)}, "
+              f"depth_embeds={len(depth_embeds_list)}, "
+              f"final_len={inputs_embeds.shape[1]}")
+
+    gen_tensor = torch.tensor(generated_ids, device=model.device).unsqueeze(0)
+    validate_continuous_generation_output(gen_tensor[0], model, processor, ablation_mode)
+    out_text = processor.batch_decode(gen_tensor, skip_special_tokens=True,
+                                      clean_up_tokenization_spaces=False)
+    return out_text[0]
+
+
 def generate_answer(model, processor, image_path: str, prompt: str,
                     max_new_tokens: int = 2048, verbose: bool = False,
                     ablation_mode: str = "none",
                     gt_depth_embeddings=None,
-                    gt_discrete_token_ids: Optional[List[int]] = None):
+                    gt_discrete_token_ids: Optional[List[int]] = None,
+                    discrete_span_length: Optional[int] = None,
+                    disable_kv_cache: bool = False,
+                    controlled_kv_off: bool = False):
     """
     Generate answer for a single image-question pair.
     
@@ -736,6 +1150,9 @@ def generate_answer(model, processor, image_path: str, prompt: str,
         verbose: Whether to print token statistics
         ablation_mode: Ablation mode string ("none"/"random"/"zero"/"gt"/"model"/"first_repeat")
         gt_depth_embeddings: Tensor [K, D] for GT ablation
+        discrete_span_length: Depth codes to force for the discrete random/zero ablations
+        disable_kv_cache: Disable the KV cache during generation
+        controlled_kv_off: Use cached generation until <DEPTH_START>, then disable the KV cache
     
     Returns:
         Generated answer text
@@ -752,10 +1169,29 @@ def generate_answer(model, processor, image_path: str, prompt: str,
         ],
     }]
     
+    use_discrete = getattr(model.config, "use_discrete_depth_tokens", False)
+    if (disable_kv_cache or controlled_kv_off) and not use_discrete:
+        return generate_greedy_kv_off(
+            model, processor, messages, max_new_tokens,
+            verbose=verbose, ablation_mode=ablation_mode,
+            gt_depth_embeddings=gt_depth_embeddings,
+            controlled_kv_off=controlled_kv_off and not disable_kv_cache,
+        )
+
+    # first_repeat: the model keeps the first predicted depth vector in
+    # `_first_depth_repeat_vec` and resets it only when generation starts with
+    # `past_key_values is None`, which the cached generate path does not guarantee, so
+    # the vector could carry over from the previous row. Clear it at the row boundary so
+    # each row repeats its own first vector. No other ablation mode reads it.
+    if ablation_mode == "first_repeat" and hasattr(model, "_first_depth_repeat_vec"):
+        model._first_depth_repeat_vec = None
+
     return generate_greedy(model, processor, messages, max_new_tokens,
                            verbose=verbose, ablation_mode=ablation_mode,
                            gt_depth_embeddings=gt_depth_embeddings,
-                           gt_discrete_token_ids=gt_discrete_token_ids)
+                           gt_discrete_token_ids=gt_discrete_token_ids,
+                           discrete_span_length=discrete_span_length,
+                           use_cache=not disable_kv_cache)
 
 
 def eval_model(args):
@@ -772,10 +1208,24 @@ def eval_model(args):
         getattr(args, 'use_model_depth', False),
         getattr(args, 'use_first_depth_repeat', False),
         getattr(args, 'use_random_depth_gt_dist', False),
+        getattr(args, 'use_gt_depth_permuted', False),
+        getattr(args, 'use_gt_depth_permuted_discrete', False),
     ]
     if sum(ablation_flags) > 1:
-        print("[ERROR] Only one ablation mode can be active: --use-random-depth, --use-zero-depth, --use-gt-depth, --use-model-depth, --use-first-depth-repeat, or --use-random-depth-gt-dist")
+        print("[ERROR] Only one ablation mode can be active: --use-random-depth, --use-zero-depth, --use-gt-depth, --use-model-depth, --use-first-depth-repeat, --use-random-depth-gt-dist, --use-gt-depth-permuted, or --use-gt-depth-permuted-discrete")
         return
+    if getattr(args, "disable_kv_cache", False) and getattr(args, "controlled_kv_off", False):
+        print("[ERROR] Use only one KV override: --disable-kv-cache or --controlled-kv-off")
+        return
+    # The KV-cache-off decode (continuous models) has no slot-shuffle branch, so the arm
+    # would silently run the model's own vectors under the arm's name.
+    if getattr(args, 'use_gt_depth_permuted', False) and (
+            getattr(args, 'disable_kv_cache', False) or getattr(args, 'controlled_kv_off', False)):
+        raise ValueError(
+            "--use-gt-depth-permuted is implemented on the cached generate path only; the "
+            "KV-cache-off decode used by --disable-kv-cache / --controlled-kv-off has no "
+            "slot-shuffle branch and would run an identity pass under the arm's name."
+        )
     
     # Determine ablation mode string
     if args.use_random_depth:
@@ -790,11 +1240,19 @@ def eval_model(args):
         ablation_mode = "first_repeat"
     elif args.use_random_depth_gt_dist:
         ablation_mode = "random_gt_dist"
+    elif args.use_gt_depth_permuted:
+        ablation_mode = "gt_permuted"
+    elif args.use_gt_depth_permuted_discrete:
+        ablation_mode = DISCRETE_GT_PERMUTED_MODE
     else:
         ablation_mode = "none"
     
     print(f"\n{'='*80}")
     print(f"DEPTH ABLATION MODE: {ablation_mode.upper()}")
+    if args.controlled_kv_off:
+        print("KV CACHE: CONTROLLED_OFF")
+    elif args.disable_kv_cache:
+        print("KV CACHE: OFF")
     print(f"{'='*80}\n")
     
     # Load model and processor
@@ -809,25 +1267,49 @@ def eval_model(args):
     
     # ---- Initialize GT depth provider if needed ----
     use_discrete = getattr(model.config, 'use_discrete_depth_tokens', False)
-    if use_discrete and ablation_mode in ("first_repeat", "random_gt_dist"):
-        print(f"[WARNING] Ablation mode '{ablation_mode}' is only supported for continuous depth models. Falling back to normal inference.")
-        ablation_mode = "none"
+    # Falling back to normal inference here would write an identity run into the arm's
+    # answers file, where it reads as a null ablation result, so these refuse instead.
+    if use_discrete and ablation_mode in ("first_repeat", "random_gt_dist", "gt_permuted"):
+        raise RuntimeError(
+            f"Ablation mode '{ablation_mode}' is only supported for continuous depth models"
+            + (" (use --use-gt-depth-permuted-discrete on a discrete checkpoint)."
+               if ablation_mode == "gt_permuted" else ".")
+        )
+    if not use_discrete and ablation_mode == DISCRETE_GT_PERMUTED_MODE:
+        raise RuntimeError(
+            f"Ablation mode '{ablation_mode}' is only supported for discrete depth models; "
+            "this checkpoint is continuous (use --use-gt-depth-permuted)."
+        )
+    if use_discrete and args.controlled_kv_off:
+        raise RuntimeError(
+            "--controlled-kv-off is implemented for continuous depth models only; on a "
+            "discrete checkpoint it would leave the KV cache on. Use --disable-kv-cache."
+        )
     if use_discrete and ablation_mode == "model":
         print("[INFO] Discrete model-depth ablation is identical to normal inference. Using normal inference.")
         ablation_mode = "none"
-    if use_discrete and ablation_mode in {"gt", "random", "zero"}:
+    if use_discrete and ablation_mode in DISCRETE_FORCED_MODES:
         print("[INFO] Discrete ablation uses forced depth token IDs and the corresponding learned token embeddings.")
     if not use_discrete:
         ensure_continuous_generation_ready(model, ablation_mode)
 
     gt_depth_provider = None
     discrete_gt_provider = None
-    if ablation_mode == "gt" and use_discrete:
+    # The discrete random/zero arms force a span as long as this image's GT code
+    # sequence (the sequence the GT arm forces), so all discrete arms emit the same
+    # number of codes. --discrete-span-length overrides it; the codebook is then needed
+    # only by the arms that inject GT content (gt, gt_permuted_discrete).
+    discrete_span_override = args.discrete_span_length
+    needs_discrete_codebook = use_discrete and (
+        ablation_mode in ("gt", DISCRETE_GT_PERMUTED_MODE)
+        or (discrete_span_override is None and ablation_mode in ("random", "zero"))
+    )
+    if needs_discrete_codebook:
         try:
             if not args.gt_depth_codebook:
                 raise ValueError(
-                    "Discrete GT ablation requires --gt-depth-codebook because the release snapshot "
-                    "does not bake in a machine-local default."
+                    "Discrete GT / random / zero ablations require --gt-depth-codebook because the "
+                    "release snapshot does not bake in a machine-local default."
                 )
             discrete_depth_token_ids = get_discrete_depth_token_ids(processor.tokenizer)
             discrete_gt_provider = DiscreteGroundTruthDepthProvider(
@@ -836,10 +1318,16 @@ def eval_model(args):
             )
             print(f"[GT DEPTH DISCRETE] Initialized provider: codebook={args.gt_depth_codebook}")
         except Exception as exc:
-            print(f"[WARNING] Failed to initialize discrete GT depth provider: {exc}")
-            print("[WARNING] Falling back to normal inference.")
-            ablation_mode = "none"
-    elif ablation_mode in ("gt", "random_gt_dist"):
+            if ablation_mode not in ("gt", DISCRETE_GT_PERMUTED_MODE):
+                raise RuntimeError(
+                    f"Discrete '{ablation_mode}' ablation needs the GT codebook to source the "
+                    f"span length (pass --discrete-span-length to override): {exc}"
+                ) from exc
+            raise RuntimeError(
+                f"Discrete '{ablation_mode}' ablation needs the GT codebook for its span "
+                f"content, and the provider failed to initialize: {exc}"
+            ) from exc
+    elif ablation_mode in ("gt", "random_gt_dist", "gt_permuted"):
         encoder_name = args.gt_depth_encoder or parse_encoder_name_from_model_path(args.model_path)
         if encoder_name is None:
             raise RuntimeError(
@@ -862,6 +1350,7 @@ def eval_model(args):
                     interp_mode=args.gt_depth_interp_mode,
                     target_num_patches=interp_size,
                     encoder_device=args.gt_depth_device,
+                    depth_map_dir=args.gt_depth_map_dir,
                 )
                 print(f"[GT DEPTH] Initialized provider: encoder={encoder_name}, target_patches={interp_size}")
             except Exception as exc:
@@ -874,9 +1363,57 @@ def eval_model(args):
     if getattr(args, 'use_depth_embed_ar', None) or getattr(args, 'no_depth_embed_ar', False):
         print("[INFO] Ignoring embed-AR override flags; using standard continuous rollout generation.")
     
+    # ---- Slot-shuffle arms: one fixed permutation for the whole arm ----
+    # Built once from the fixed seed in gt_spatial.py, recorded in `_permutation.json`
+    # beside the answers and in every row, so the slot map a table cites is the slot map
+    # the run injected.
+    gt_spatial_state = None
+    discrete_perm = None
+    if ablation_mode == "gt_permuted":
+        _k = int(getattr(model.config, "continuous_K", 0) or 0)
+        if _k <= 0:
+            raise RuntimeError(
+                f"ablation mode '{ablation_mode}' needs config.continuous_K; this "
+                f"checkpoint reports {getattr(model.config, 'continuous_K', None)!r}")
+        # build_slot_permutation requires k == grid*grid (an 8x8 span).
+        _perm = _gts.build_slot_permutation(k=_k, seed=_gts.PERM_SEED, grid=_gts.GRID)
+        gt_spatial_state = {
+            "mode": ablation_mode, "grid": _gts.GRID, "K": _k,
+            "perm": list(_perm), "perm_seed": _gts.PERM_SEED,
+            "perm_sha": _gts.permutation_sha(_perm),
+            "perm_facts": _gts.permutation_facts(_perm, _gts.GRID),
+        }
+        write_permutation_json(args.answers_file, gt_spatial_state)
+    elif ablation_mode == DISCRETE_GT_PERMUTED_MODE:
+        # K comes from the 10x10 code grid, not from config.continuous_K. Each row's GT
+        # sequence is checked against this length below.
+        _dperm = _gts.build_slot_permutation(
+            k=DISCRETE_DEPTH_K, seed=_gts.PERM_SEED, grid=DISCRETE_DEPTH_GRID,
+            min_moved=DISCRETE_PERM_MIN_MOVED, min_cheb=_gts.PERM_MIN_CHEBYSHEV)
+        _dfacts = _gts.permutation_facts(_dperm, DISCRETE_DEPTH_GRID)
+        if not (_dfacts["is_permutation"] and _dfacts["is_derangement"]):
+            raise RuntimeError(
+                f"the discrete slot permutation is not a derangement of "
+                f"0..{DISCRETE_DEPTH_K - 1}: {_dfacts}")
+        discrete_perm = _dperm
+        gt_spatial_state = {
+            "mode": ablation_mode, "grid": DISCRETE_DEPTH_GRID, "K": DISCRETE_DEPTH_K,
+            "perm": list(_dperm), "perm_seed": _gts.PERM_SEED,
+            "perm_sha": _gts.permutation_sha(_dperm), "perm_facts": _dfacts,
+            "perm_min_moved": DISCRETE_PERM_MIN_MOVED,
+            "operand": "vqvae_code_ids",
+        }
+        write_permutation_json(args.answers_file, gt_spatial_state)
+        print(f"[GT SPATIAL] {ablation_mode}: {DISCRETE_DEPTH_GRID}x"
+              f"{DISCRETE_DEPTH_GRID} code grid, slot s <- GT[perm[s]]; seed "
+              f"{_gts.PERM_SEED}, sha {gt_spatial_state['perm_sha'][:12]}, derangement, "
+              f"{_dfacts['n_moved_cheb_ge']}/{_dfacts['k']} slots moved >= "
+              f"{_gts.PERM_MIN_CHEBYSHEV} cells (bar {DISCRETE_PERM_MIN_MOVED})")
+
     # ---- Set ablation mode on the model ----
-    model.set_depth_ablation(mode="none" if use_discrete else ablation_mode)
-    if use_discrete and ablation_mode in {"gt", "random", "zero"}:
+    model.set_depth_ablation(mode="none" if use_discrete else ablation_mode,
+                             gt_spatial=gt_spatial_state)
+    if use_discrete and ablation_mode in DISCRETE_FORCED_MODES:
         discrete_override_flags = [
             getattr(model, "_depth_ablation_random", False),
             getattr(model, "_depth_ablation_zero", False),
@@ -920,25 +1457,33 @@ def eval_model(args):
         
         # ---- Per-image GT depth extraction ----
         per_image_gt_depth = None
+        per_image_gt_codes = None
         per_image_gt_discrete_tokens = None
+        per_image_discrete_span = discrete_span_override
         per_image_gt_mean = None
         per_image_gt_std = None
-        if ablation_mode == "gt" and use_discrete and discrete_gt_provider is not None:
+        if ablation_mode in DISCRETE_FORCED_MODES and use_discrete and discrete_gt_provider is not None:
             try:
-                per_image_gt_discrete_tokens = discrete_gt_provider.get_token_ids(image_file)
+                per_image_gt_codes = discrete_gt_provider.get_token_ids(image_file)
+                # random/zero take only the LENGTH of the GT sequence, never its content.
+                if ablation_mode == "gt":
+                    per_image_gt_discrete_tokens = per_image_gt_codes
+                if per_image_discrete_span is None:
+                    per_image_discrete_span = len(per_image_gt_codes)
                 if args.verbose:
-                    print(f"  [GT DEPTH DISCRETE] Loaded {len(per_image_gt_discrete_tokens)} tokens for {image_file}")
+                    print(f"  [GT DEPTH DISCRETE] Loaded {len(per_image_gt_codes)} tokens for {image_file}")
             except Exception as exc:
                 print(f"  [WARNING] Failed to get discrete GT depth for {image_file}: {exc}")
                 per_image_gt_discrete_tokens = None
-        elif ablation_mode in ("gt", "random_gt_dist") and gt_depth_provider is not None:
+                per_image_gt_codes = None
+        elif ablation_mode in ("gt", "random_gt_dist", "gt_permuted") and gt_depth_provider is not None:
             try:
                 continuous_K = getattr(model.config, 'continuous_K', 64)
                 gt_tokens = gt_depth_provider.get_embeddings(image_path, continuous_K)
                 gt_tokens_f = gt_tokens.to(torch.float32)
                 per_image_gt_mean = gt_tokens_f.mean().item()
                 per_image_gt_std = gt_tokens_f.std().item()
-                if ablation_mode == "gt":
+                if ablation_mode in ("gt", "gt_permuted"):
                     per_image_gt_depth = gt_tokens_f
                     model._gt_depth_embeddings_seq = per_image_gt_depth
                     model._gt_depth_idx = 0
@@ -953,6 +1498,24 @@ def eval_model(args):
                     f"Failed to get GT depth for image '{image_file}' under continuous ablation mode '{ablation_mode}': {exc}"
                 ) from exc
         
+        # The discrete shuffle. Outside the fetch's try/except above on purpose: there a
+        # missing GT sequence degrades to a free span, which for this arm would be an
+        # identity row recorded as a shuffled one, so here it stops the run instead.
+        if ablation_mode == DISCRETE_GT_PERMUTED_MODE:
+            if per_image_gt_codes is None:
+                raise RuntimeError(
+                    f"{ablation_mode}: no GT depth codes for {image_file}; a free span would be "
+                    "indistinguishable from an identity row.")
+            if len(per_image_gt_codes) != DISCRETE_DEPTH_K:
+                raise RuntimeError(
+                    f"{ablation_mode}: {image_file} has {len(per_image_gt_codes)} GT depth "
+                    f"codes, but the permutation is over the "
+                    f"{DISCRETE_DEPTH_GRID}x{DISCRETE_DEPTH_GRID} grid ({DISCRETE_DEPTH_K} slots).")
+            # slot s receives GT[perm[s]], on code ids.
+            per_image_gt_discrete_tokens = [per_image_gt_codes[discrete_perm[s]]
+                                            for s in range(DISCRETE_DEPTH_K)]
+            per_image_discrete_span = DISCRETE_DEPTH_K
+
         try:
             # Generate answer
             answer_text = generate_answer(
@@ -965,6 +1528,9 @@ def eval_model(args):
                 ablation_mode=ablation_mode,
                 gt_depth_embeddings=per_image_gt_depth,
                 gt_discrete_token_ids=per_image_gt_discrete_tokens,
+                discrete_span_length=per_image_discrete_span,
+                disable_kv_cache=args.disable_kv_cache,
+                controlled_kv_off=args.controlled_kv_off,
             )
             
             # Store answer
@@ -976,9 +1542,29 @@ def eval_model(args):
                 'prompt': prompt if args.save_prompt else None,
             }
             
-            # Add ablation metadata
-            if ablation_mode != "none":
-                answer_entry['ablation_mode'] = ablation_mode
+            # Add ablation metadata. Stamped on every row, "none" included, so a run that
+            # ended up on the identity path is visible in the answers file.
+            answer_entry['ablation_mode'] = ablation_mode
+            # Slot-shuffle provenance (the full perm list is in `_permutation.json`).
+            if gt_spatial_state is not None:
+                answer_entry['gt_spatial'] = {k: v for k, v in gt_spatial_state.items()
+                                              if k not in ("perm", "perm_facts")}
+            # The span actually forced, so the length match is auditable downstream.
+            if use_discrete and ablation_mode in DISCRETE_FORCED_MODES:
+                answer_entry['discrete_span_length'] = (
+                    len(per_image_gt_discrete_tokens)
+                    if ablation_mode in ("gt", DISCRETE_GT_PERMUTED_MODE)
+                    else per_image_discrete_span
+                )
+            # Discrete slot shuffle: the unpermuted GT codes and the codes actually forced,
+            # so injected[s] == gt[perm[s]] can be checked for every slot of every row.
+            if ablation_mode == DISCRETE_GT_PERMUTED_MODE:
+                answer_entry['gt_depth_codes'] = list(per_image_gt_codes)
+                answer_entry['injected_depth_codes'] = list(per_image_gt_discrete_tokens)
+            if args.disable_kv_cache:
+                answer_entry['disable_kv_cache'] = True
+            if args.controlled_kv_off:
+                answer_entry['controlled_kv_off'] = True
             
             # Remove None values
             answer_entry = {k: v for k, v in answer_entry.items() if v is not None}
@@ -1105,6 +1691,25 @@ def main():
         action="store_true",
         help="Replace depth embeddings with random vectors whose mean/std match the GT depth embedding distribution (ablation mode)"
     )
+    parser.add_argument(
+        "--use-gt-depth-permuted",
+        action="store_true",
+        help="Slot shuffle: inject this image's GT depth embeddings, but slot s receives GT[perm[s]] "
+             "for one fixed permutation shared by every row (seed "
+             f"{_gts.PERM_SEED}, a derangement moving >= {_gts.PERM_MIN_MOVED} of K "
+             f"slots by >= {_gts.PERM_MIN_CHEBYSHEV} cells). Continuous path only; uses the "
+             "same GT provider flags as --use-gt-depth and writes _permutation.json beside the answers."
+    )
+    parser.add_argument(
+        "--use-gt-depth-permuted-discrete",
+        action="store_true",
+        help="Slot shuffle on the discrete span: force this image's GT depth code ids over the "
+             f"{DISCRETE_DEPTH_GRID}x{DISCRETE_DEPTH_GRID} grid, but slot s receives GT[perm[s]] for "
+             f"one fixed permutation (seed {_gts.PERM_SEED}, a derangement moving >= "
+             f"{DISCRETE_PERM_MIN_MOVED} of {DISCRETE_DEPTH_K} slots by >= "
+             f"{_gts.PERM_MIN_CHEBYSHEV} cells). Same codes and span length as --use-gt-depth; only "
+             "the slot order changes. Discrete path only; reads --gt-depth-codebook."
+    )
     
     # GT depth arguments (only used when --use-gt-depth or --use-random-depth-gt-dist is set)
     parser.add_argument(
@@ -1144,6 +1749,34 @@ def main():
         type=str,
         default=DEFAULT_GT_DEPTH_CODEBOOK,
         help="Path to the discrete GT depth token codebook (.npy) used for discrete GT ablation.",
+    )
+    parser.add_argument(
+        "--discrete-span-length",
+        type=int,
+        default=None,
+        help="Override the number of depth codes forced between <DEPTH_START> and <DEPTH_END> "
+             "for the discrete random/zero ablations. Defaults to the per-image GT code-sequence "
+             "length from --gt-depth-codebook, which keeps the forced arms length-matched to "
+             "identity/GT. Does not affect the GT arms or continuous models.",
+    )
+    parser.add_argument(
+        "--gt-depth-map-dir",
+        type=str,
+        default=None,
+        help="Directory of depth-map PNGs named '<base>_depth.png'. When set, the continuous GT "
+             "depth provider encodes these maps, as the paper's oracle does; when unset it encodes "
+             "the RGB image (previous behaviour).",
+    )
+    parser.add_argument(
+        "--disable-kv-cache",
+        action="store_true",
+        help="Disable the KV cache during generation (continuous models: recompute every step).",
+    )
+    parser.add_argument(
+        "--controlled-kv-off",
+        action="store_true",
+        help="Generate with the KV cache until <DEPTH_START>, then recompute every step over the "
+             "span and the answer (continuous models only).",
     )
     
     # Legacy embed-AR overrides (kept for backward-compatible CLI parsing)
