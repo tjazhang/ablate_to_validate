@@ -171,7 +171,7 @@ If you use the released Aurora training bundle above, the matching pair is:
 
 ### Aurora two-stage depth training
 
-This is an alternative recipe from the Aurora codebase. The paper's models were each trained in one 10-epoch run; see "Settings of the paper's models" below.
+This is an alternative recipe from the Aurora codebase. The paper's two main LLaVA-13B depth models (continuous and discrete) were each trained in one 10-epoch run; see "Settings of the paper's models" below.
 
 Aurora depth training is driven by `llava/train/train.py`.
 
@@ -207,7 +207,7 @@ For the full recipe and tuning knobs, see `docs/two_stage_depth_training.md`.
 
 ### Settings of the paper's models
 
-The paper reports these settings for its LLaVA-13B depth models, each trained for 10 epochs:
+The paper reports these settings for its two main LLaVA-13B depth models, each trained for 10 epochs:
 
 | Setting | Continuous (SigLIP2, K=64) | Discrete (K=100) |
 | --- | --- | --- |
