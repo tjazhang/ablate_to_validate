@@ -156,4 +156,3 @@ dependencies:
       - wandb==0.21.2
       - wavedrom==2.0.3.post3
       - websockets==11.0.3
-prefix: /mmfs1/gscratch/cse/tzhang26/miniconda/envs/llava

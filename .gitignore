@@ -2,7 +2,7 @@ external/*
 !external/.gitkeep
 
 # Dissemination materials (10-min talk, poster, cross-artifact map).
-# Ignored here but BACKED UP in the private repo tjazhang/aurora2 under
+# Ignored here but backed up privately under
 # the same folder name (atv-dissemination/). Sync is manual and two-way:
 # hash-compare per file before overwriting either side. See the folder's
 # README.md for details.
