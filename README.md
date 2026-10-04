@@ -28,7 +28,7 @@ Vision-language models (VLMs) are increasingly augmented with continuous or late
 
 ## Updates (revised manuscript, Sept 2026)
 
-The project page (except its teaser video, which still shows arXiv v1 values) and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
+The project page and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
 
 | Result | arXiv v1 | Revised | Reason |
 | --- | --- | --- | --- |
