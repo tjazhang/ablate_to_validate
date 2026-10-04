@@ -171,6 +171,8 @@ If you use the released Aurora training bundle above, the matching pair is:
 
 ### Aurora two-stage depth training
 
+This is an alternative recipe from the Aurora codebase. The paper's models were each trained in one 10-epoch run; see "Settings of the paper's models" below.
+
 Aurora depth training is driven by `llava/train/train.py`.
 
 Stage 1 example:

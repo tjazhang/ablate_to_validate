@@ -6,6 +6,8 @@ NEW: Aurora path: docs/two_stage_depth_training.md
 
 # Two-Stage Depth Training for LLaVA
 
+> **An alternative recipe.** This two-stage recipe comes from the Aurora codebase. The paper's LLaVA-13B depth models were each trained in one 10-epoch run from LLaVA-1.5-13B; their settings are in [`../USER_GUIDE.md`](../USER_GUIDE.md) ("Settings of the paper's models").
+
 This document describes the two-stage training approach for LLaVA with depth tokens, similar to the MetaMorph training strategy.
 
 ## Overview
