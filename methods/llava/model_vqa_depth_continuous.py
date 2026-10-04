@@ -543,6 +543,16 @@ def eval_model(args):
                 "FATAL: --use-gt-depth-permuted was requested for an original-mode "
                 "checkpoint, which has no depth span to shuffle.")
 
+    # On a discrete checkpoint this driver runs identity only. Its discrete branch has
+    # none of the discrete driver's guards (depth-id resync and hard stop, span length,
+    # empty-entry refusal), so a replacement arm here could force the wrong span length
+    # or run as identity under the arm's name.
+    if use_discrete_depth_tokens and sum(ablation_flags) > 0:
+        raise SystemExit(
+            "FATAL: this checkpoint is discrete. Run its replacement arms with "
+            "`python -m llava.eval.model_vqa_depth_discrete` (see the LLaVA guide); "
+            "this driver runs identity only on discrete checkpoints.")
+
     if is_original_mode and sum(ablation_flags) > 0:
         print("[WARNING] Depth ablation flags were provided for an original-mode checkpoint; they will be ignored.")
         args.use_gt_depth_embeddings = False

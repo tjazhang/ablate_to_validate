@@ -86,7 +86,7 @@ python -m llava.eval.model_vqa \
 
 ### 3. Batch eval for Aurora continuous-depth checkpoints
 
-`model_vqa_depth_continuous.py` is the main Aurora eval path. It can run `original`, `continuous`, or `discrete` checkpoints, but it is most useful for continuous-depth models.
+`model_vqa_depth_continuous.py` is the main Aurora eval path. It runs `original` and `continuous` checkpoints, and `discrete` checkpoints for identity only (it stops if a replacement flag is given); run the discrete arms with `llava.eval.model_vqa_depth_discrete` (section 4).
 
 ```bash
 python model_vqa_depth_continuous.py \
