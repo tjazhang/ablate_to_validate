@@ -28,7 +28,7 @@ Vision-language models (VLMs) are increasingly augmented with continuous or late
 
 ## Updates (revised manuscript, Sept 2026)
 
-The project page and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
+The project page (except its teaser video, which still shows arXiv v1 values) and the eval code now follow the revised manuscript (Sept 2026). Where its numbers differ from arXiv v1, the revised numbers supersede v1. HardBLINK accuracy (%) unless noted:
 
 | Result | arXiv v1 | Revised | Reason |
 | --- | --- | --- | --- |
@@ -51,7 +51,9 @@ The project page and the eval code now follow the revised manuscript (Sept 2026)
 
 Mull-Tokens: the SAT and GRPO columns also changed, and the v1 "Random (same dist)" row is now "Random (second draw)"; see the revised manuscript.
 
-New in the revised manuscript: a slot-shuffle arm (the oracle span with its slots reordered by one fixed permutation), a matched-budget control (the same 100 VQ-VAE depth tokens read as codebook embeddings or as token IDs), KV-cache-off decoding, an attention-value (V-channel) ablation, and paired confidence intervals. Two continuous arms collapse decoding and are scored as wrong: LLaVA-13B zero (no answer after the span on 372/372 questions) and Qwen2.5-VL-3B first-repeat (343/372).
+The table lists the main changes, not every one: several per-subset (3/4/5-point) values also changed; the Mirage table now covers VSP Spatial Planning only (its HardBLINK columns are dropped, and its oracle and GT-distribution rows now name the helper image); and the KV-cache-off check (Qwen2.5-VL-3B, DINOv2) moved from a K = 4 table to a K = 64 re-run reported in the appendix text.
+
+New in the revised manuscript: a slot-shuffle arm (the oracle span with its slots reordered by one fixed permutation), a matched-budget control (the same 100 VQ-VAE depth tokens read as codebook embeddings or as token IDs), an attention-value (V-channel) ablation, and paired confidence intervals. Two continuous arms collapse decoding and are scored as wrong: LLaVA-13B zero (no answer after the span on 372/372 questions) and Qwen2.5-VL-3B first-repeat (343/372).
 
 Code in this release: the slot-shuffle arms, the discrete span-length fix (LLaVA and Qwen drivers), the LLaVA discrete token-id resync and the KV-cache-off flags (see the [LLaVA](methods/llava/USER_GUIDE.md) and [Qwen](methods/qwen/USER_GUIDE.md) guides), and batch-size control for the [Mull](overlays/mull/USER_GUIDE.md) driver. The V-channel ablation, the matched-budget control, the paired confidence intervals and the launch scripts follow in a later update.
 

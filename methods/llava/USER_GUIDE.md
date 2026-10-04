@@ -145,7 +145,7 @@ If the checkpoint's `config.json` has no depth fields, the depth token ids load 
 
 `--use-random-depth` and `--use-zero-depth` force `--discrete-span-length N` codes (100 for the paper's models), or each image's GT code count when `--gt-depth-codebook` is given; with neither, the driver stops. Each answer row records the arm and the forced length (`ablation_mode`, `discrete_span_length` under `metadata`).
 
-`model_vqa_depth_continuous.py` and `model_vqa_depth_discrete` sample at temperature 0.2 by default (`--temperature`) and have no `--seed`, so expect some spread between repeated runs.
+`model_vqa_depth_continuous.py` and `model_vqa_depth_discrete.py` sample at temperature 0.2 by default (`--temperature`) and have no `--seed`, so expect some spread between repeated runs.
 
 ## Training
 
