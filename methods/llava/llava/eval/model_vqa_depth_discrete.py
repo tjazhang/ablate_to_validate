@@ -238,6 +238,16 @@ def eval_model(args):
                 f"zeros={sum(1 for t in _ids if t == 0)}). No span would be forced. Pass "
                 "--resync-discrete-depth-ids if the checkpoint config lacks depth fields.")
 
+    # The oracle arm and the slot shuffle (which reorders the oracle's operand) both need
+    # the GT discrete provider. Without it every row would be an identity pass recorded
+    # under the arm's name, so a provider that was not built (the warning above says why)
+    # stops the run here.
+    if (args.use_gt_depth_embeddings or args.use_gt_depth_permuted_discrete) and discrete_gt_provider is None:
+        raise SystemExit(
+            "FATAL: --use-gt-depth-embeddings needs the GT discrete provider (built from "
+            "--gt-depth-codebook or GT_DEPTH_CODEBOOK) and it was not built. Without it every "
+            "row would be an identity pass recorded as an oracle or shuffled one.")
+
     # The random/zero forcing processors read model.num_depth_tokens at generate time, so
     # each row's span length is written there before its generate call (below).
     forces_span = bool((args.use_random_depth or args.use_zero_depth)
@@ -276,11 +286,6 @@ def eval_model(args):
     gt_permutation_record = None
     tid2level = None
     if args.use_gt_depth_permuted_discrete:
-        if discrete_gt_provider is None:
-            raise SystemExit(
-                "FATAL: --use-gt-depth-permuted-discrete needs the GT discrete provider (the "
-                "oracle arm's operand) and it was not built. Without it every row would be "
-                "an identity pass recorded as a shuffled one.")
         _grid = 10                      # VQ-VAE 10x10 code grid
         _k = _grid * _grid
         _bar = int(round(_gts.PERM_MIN_MOVED / _gts.K_DEFAULT * _k))   # 94, as in the Qwen driver
@@ -387,15 +392,17 @@ def eval_model(args):
                     print(f"[WARNING] Failed to fetch GT depth tokens for {image_file}: {exc}")
                     gt_discrete_tokens = None
 
-            # The shuffle. Outside the fetch's try/except on purpose: there a missing GT
-            # sequence degrades to a free span, which for this arm would be an identity row
-            # recorded as a shuffled one, so here it stops the run instead.
+            # The oracle arms. Outside the fetch's try/except on purpose: there a missing GT
+            # sequence degrades to a free span, which would be an identity row recorded as
+            # an oracle or shuffled one, so here it stops the run instead.
+            if discrete_gt_provider is not None and (not use_discrete_depth_tokens
+                                                     or not gt_discrete_tokens):
+                raise RuntimeError(
+                    f"--use-gt-depth-embeddings: no GT code sequence for {image_file} "
+                    f"(use_discrete_depth_tokens={use_discrete_depth_tokens}); refusing to "
+                    "record a free span as an oracle or shuffled row.")
+            # The shuffle.
             if discrete_perm is not None:
-                if not use_discrete_depth_tokens or not gt_discrete_tokens:
-                    raise RuntimeError(
-                        f"--use-gt-depth-permuted-discrete: no GT code sequence for {image_file} "
-                        f"(use_discrete_depth_tokens={use_discrete_depth_tokens}); refusing to "
-                        "record a free span as a shuffled row.")
                 if len(gt_discrete_tokens) != len(discrete_perm):
                     raise RuntimeError(
                         f"--use-gt-depth-permuted-discrete: {image_file} has "

@@ -557,10 +557,15 @@ def eval_model(args):
 
     if args.use_random_depth_gt_dist:
         # Distribution-matched random depth requires the GT encoder to get per-sample stats.
+        # Without the provider the arm would be switched off and run as identity under its
+        # name, so both failures below stop the run.
         encoder_name = args.gt_depth_encoder or parse_encoder_name_from_model_path(model_path)
         if encoder_name is None:
-            print("[WARNING] Could not infer encoder name from model path; disabling random-depth-gt-dist ablation.")
-            args.use_random_depth_gt_dist = False
+            raise SystemExit(
+                "FATAL: --use-random-depth-gt-dist needs the GT depth encoder, which could not "
+                "be inferred from the model path (no '_enc_<org>_<name>' part). Pass "
+                "--gt-depth-encoder NAME.\n"
+                f"       model path: {model_path}")
         else:
             # The noise is sized from this provider's GT stats, so the patch count matters here too.
             assert_gt_patch_count_is_stated(model_path, args.gt_depth_target_num_patches)
@@ -576,9 +581,10 @@ def eval_model(args):
                 )
                 print(f"[INFO] GT depth provider initialized for random-depth-gt-dist mode.")
             except Exception as exc:
-                print(f"[WARNING] Failed to initialize GroundTruthDepthProvider for distribution-matched mode: {exc}")
-                gt_depth_provider = None
-                args.use_random_depth_gt_dist = False
+                raise SystemExit(
+                    "FATAL: --use-random-depth-gt-dist needs the GT depth provider, which could "
+                    f"not be built: {exc}\n"
+                    "       Without it the arm would run as identity under its name.") from exc
 
     # The slot-shuffle arm builds the same provider as the oracle arm (same per-image
     # embeddings, reordered), so it opens the same block.
@@ -587,13 +593,18 @@ def eval_model(args):
             # Initialize discrete GT depth provider
             codebook_path = args.gt_depth_codebook or DEFAULT_GT_DEPTH_CODEBOOK
             discrete_depth_token_ids = getattr(model.config, 'discrete_depth_token_ids', None)
-            
+
+            # An oracle arm whose provider is not built injects nothing and runs as identity
+            # under its name, so each failure below stops the run.
             if not codebook_path:
-                print("[WARNING] GT discrete depth requested but no codebook was provided. Pass --gt-depth-codebook or set GT_DEPTH_CODEBOOK.")
-                discrete_gt_depth_provider = None
+                raise SystemExit(
+                    "FATAL: GT discrete depth was requested but no codebook was provided. Pass "
+                    "--gt-depth-codebook or set GT_DEPTH_CODEBOOK.")
             elif discrete_depth_token_ids is None:
-                print("[WARNING] discrete_depth_token_ids not found in model config; cannot use GT discrete depth")
-                discrete_gt_depth_provider = None
+                raise SystemExit(
+                    "FATAL: GT discrete depth was requested but the model config has no "
+                    "discrete_depth_token_ids, so the GT provider cannot be built.\n"
+                    f"       model path: {model_path}")
             else:
                 print(f"[INFO] Model has {len(discrete_depth_token_ids)} discrete depth token IDs")
                 print(f"[INFO] Token ID range: {min(discrete_depth_token_ids)} - {max(discrete_depth_token_ids)}")
@@ -604,13 +615,21 @@ def eval_model(args):
                     )
                     print(f"[INFO] GT depth ablation enabled for discrete tokens (codebook: {codebook_path})")
                 except Exception as exc:
-                    print(f"[WARNING] Failed to initialize DiscreteGroundTruthDepthProvider: {exc}")
-                    discrete_gt_depth_provider = None
+                    raise SystemExit(
+                        "FATAL: GT discrete depth was requested but the GT provider could not "
+                        f"be built: {exc}\n"
+                        f"       codebook: {codebook_path}") from exc
         else:
             # Initialize continuous GT depth provider (existing code)
             encoder_name = args.gt_depth_encoder or parse_encoder_name_from_model_path(model_path)
+            # An oracle arm whose provider is not built runs as identity under its name, so
+            # both failures below stop the run.
             if encoder_name is None:
-                print("[WARNING] Could not infer encoder name from model path; disabling GT depth ablation.")
+                raise SystemExit(
+                    "FATAL: the oracle arms (--use-gt-depth-embeddings, --use-gt-depth-permuted) "
+                    "need the GT depth encoder, which could not be inferred from the model path "
+                    "(no '_enc_<org>_<name>' part). Pass --gt-depth-encoder NAME.\n"
+                    f"       model path: {model_path}")
             else:
                 assert_gt_patch_count_is_stated(model_path, args.gt_depth_target_num_patches)
                 target_len = args.gt_depth_target_num_patches or depth_token_target
@@ -624,8 +643,10 @@ def eval_model(args):
                         depth_map_dir=args.gt_depth_map_dir,
                     )
                 except Exception as exc:
-                    print(f"[WARNING] Failed to initialize GroundTruthDepthProvider: {exc}")
-                    gt_depth_provider = None
+                    raise SystemExit(
+                        "FATAL: an oracle arm was requested but the GT depth provider could not "
+                        f"be built: {exc}\n"
+                        "       Without it the arm would run as identity under its name.") from exc
 
     questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
@@ -737,11 +758,10 @@ def eval_model(args):
                 if args.use_random_depth_gt_dist:
                     print(f"[RANDOM DEPTH GT DIST] GT distribution: mean={gt_depth_mean:.4f}, std={gt_depth_std:.4f}")
             except Exception as exc:
-                if args.gt_depth_map_dir:
-                    # A missing depth map would otherwise turn this row into an identity row.
-                    raise
-                print(f"[WARNING] Failed to fetch GT depth embeddings for {gt_image_path}: {exc}")
-                gt_depth_tensor = None
+                # Only the oracle-based arms build this provider, and a failed fetch would
+                # turn this row into an identity row, so it stops the run.
+                print(f"[ERROR] Failed to fetch GT depth embeddings for {gt_image_path}: {exc}")
+                raise
         
         # Fetch GT depth (discrete token IDs)
         if discrete_gt_depth_provider is not None:
@@ -751,8 +771,9 @@ def eval_model(args):
                 print(f"[GT DEPTH DISCRETE] Token IDs (first 20): {gt_discrete_token_ids[:20]}")
                 print(f"[GT DEPTH DISCRETE] Token IDs (last 20): {gt_discrete_token_ids[-20:]}")
             except Exception as exc:
-                print(f"[WARNING] Failed to fetch GT discrete token IDs for {image_file}: {exc}")
-                gt_discrete_token_ids = None
+                # As above: without this image's codes the oracle row would be an identity row.
+                print(f"[ERROR] Failed to fetch GT discrete token IDs for {image_file}: {exc}")
+                raise
 
         with torch.inference_mode():
             # print(f"Generating for question: {qs[:10]}...")
