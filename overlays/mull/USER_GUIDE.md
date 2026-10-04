@@ -77,13 +77,13 @@ Every arm uses greedy decoding (the driver's default for `blink` and `sat`) and 
 cd external/mull/upstream
 python3 ./src/eval_bench_ablation_novllm.py \
     --model_path array/Qwen2.5-VL-Mull \
-    --file_name video_r1_ablation_Qwen2.5-VL-Mull \
+    --file_name trt_bsz1_Qwen2.5-VL-Mull \
     --dataset_names blink \
     --batch-size 1 \
     --use-zero-latent        # the arm's flag from the table; omit for Identity
 ```
 
-Use `--dataset_names sat` for SAT and `array/Qwen2.5-VL-MullGRPO` for the GRPO checkpoint. `--max-samples N` caps each dataset at its first `N` questions for a quick smoke run.
+Use `--dataset_names sat` for SAT, and `array/Qwen2.5-VL-MullGRPO` with `--file_name trt_bsz1_Qwen2.5-VL-MullGRPO` for the GRPO checkpoint. The driver resumes from an existing output file of the same name (`src/r1-v/eval_results/eval_<dataset>_<file_name><arm suffix>_greedy_output.json`), so give each checkpoint its own `--file_name`, distinct from the wrapper's `video_r1_ablation_<model>`. `--max-samples N` caps each dataset at its first `N` questions for a quick smoke run.
 
 ## Dataset Configuration
 

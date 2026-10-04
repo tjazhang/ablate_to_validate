@@ -262,6 +262,8 @@ No trained checkpoints are released, so every arm needs a model trained with the
 | KV cache off (appendix) | `--controlled-kv-off` with the identity, oracle or random arm | as that arm | as that arm |
 | V-channel ablation, matched-budget control, paired confidence intervals | not in this release | | code follows in a later update |
 
+The driver skips a question whose image is missing or whose generation raises an error, so check that each answers file has 124 rows (one HardBLINK subset) before scoring.
+
 ## Optional Web Demo
 
 Local multimodal Gradio demo:

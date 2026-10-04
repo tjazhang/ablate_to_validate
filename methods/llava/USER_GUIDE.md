@@ -112,6 +112,7 @@ The oracle-based arms (`--use-gt-depth-embeddings`, `--use-gt-depth-permuted`, `
 
 - `--gt-depth-map-dir DIR` encodes `DIR/<image base name>_depth.png`, the operand of the paper's oracle. Without it the driver encodes the RGB image and prints a warning; that operand is not the paper's.
 - For a checkpoint whose name carries `_interploate_K`, pass `--gt-depth-target-num-patches K` (64 for the paper's SigLIP2 cell); the driver stops otherwise.
+- `--gt-depth-encoder NAME` (for example `google/siglip2-large-patch16-256`) names the depth encoder. Without it the driver reads the encoder from the `_enc_<org>_<name>` part of the checkpoint path, and stops if the path has none.
 
 In the paper every depth map, training target and oracle alike, is a Depth Anything (ViT-S) estimate; reading the maps at the marked points reproduces 362 of the 372 HardBLINK answer labels.
 
@@ -143,6 +144,8 @@ Add `--use-gt-depth-permuted-discrete` to that command for the slot shuffle: the
 If the checkpoint's `config.json` has no depth fields, the depth token ids load as 0 and no forced span can engage. The driver then stops for `--use-gt-depth-embeddings`, `--use-gt-depth-permuted-discrete`, `--use-random-depth` and `--use-zero-depth`; add `--resync-discrete-depth-ids` to rebuild the ids from the tokenizer.
 
 `--use-random-depth` and `--use-zero-depth` force `--discrete-span-length N` codes (100 for the paper's models), or each image's GT code count when `--gt-depth-codebook` is given; with neither, the driver stops. Each answer row records the arm and the forced length (`ablation_mode`, `discrete_span_length` under `metadata`).
+
+`model_vqa_depth_continuous.py` and `model_vqa_depth_discrete` sample at temperature 0.2 by default (`--temperature`) and have no `--seed`, so expect some spread between repeated runs.
 
 ## Training
 
