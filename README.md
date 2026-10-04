@@ -1,4 +1,4 @@
-# Ablate-to-Validate: Are Vision-Language Models Really Using Visual Reasoning Tokens?
+# Ablate-to-Validate: Are Vision-Language Models Really Using Continuous Thought Tokens?
 
 \[[arXiv](https://arxiv.org/abs/2605.21642)\] &nbsp; \[[Paper PDF](docs/assets/atv_paper.pdf)\] &nbsp; \[[Project Page](https://tjazhang.github.io/ablate_to_validate/)\]
 
